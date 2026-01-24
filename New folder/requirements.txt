@@ -1,0 +1,17 @@
+flask
+flask-cors
+websocket-client
+requests
+pandas
+numpy
+# APIs from GitHub
+git+https://github.com/cleitonleonel/pyquotex.git
+git+https://github.com/n1nj4z33/iqoptionapi.git
+supabase
+psycopg2-binary
+python-dotenv
+pytz
+nest-asyncio
+gunicorn
+# Note: Binolla and PocketOption libs might require manual setup or specific dependencies
+pyquotex
