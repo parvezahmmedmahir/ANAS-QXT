@@ -797,45 +797,45 @@ def validate_license():
         row = cur.fetchone()
         
         if not row:
-            print(f"[AUTH] Invalid Key Attempt: {clean_key}")
-            return jsonify({"valid": False, "message": "Invalid License Key. Check for typos."}), 200
+            print(f"[AUTH] Invalid Key Attempt: {clean_key} (NOT FOUND IN DB)")
+            return jsonify({"valid": False, "message": "Invalid License Key. Please check the master code."}), 200
             
         category, status, locked_device, expiry_date = row
         
         # Expiry Check
         if expiry_date:
-            # Ensure expiry_date is a datetime object
-            if isinstance(expiry_date, str):
-                try:
-                    expiry_date = datetime.datetime.strptime(expiry_date, "%Y-%m-%d %H:%M:%S")
-                except:
-                    try:
-                        expiry_date = datetime.datetime.fromisoformat(expiry_date.replace('Z', '+00:00'))
-                    except:
-                        pass
-            
-            if datetime.datetime.utcnow() > expiry_date.replace(tzinfo=None):
-                print(f"[AUTH] Key Expired: {clean_key}")
-                return jsonify({"valid": False, "message": "License Key has Expired. Please renew."}), 200
+            try:
+                # Standardize to naive UTC for comparison
+                now_utc = datetime.datetime.utcnow().replace(tzinfo=None)
+                if isinstance(expiry_date, str):
+                    try: exp = datetime.datetime.strptime(expiry_date, "%Y-%m-%d %H:%M:%S")
+                    except: exp = datetime.datetime.fromisoformat(expiry_date.replace('Z', '+00:00')).replace(tzinfo=None)
+                else:
+                    exp = expiry_date.replace(tzinfo=None) if hasattr(expiry_date, 'replace') else expiry_date
+                
+                if now_utc > exp:
+                    print(f"[AUTH] Key Expired: {clean_key} (Expiry: {exp})")
+                    return jsonify({"valid": False, "message": "This License Key has reached its expiration date."}), 200
+            except Exception as e:
+                print(f"[AUTH] Expiry Parse Warning: {e}")
 
-        # DEVICE LOCK LOGIC
+        # DEVICE LOCK LOGIC (STRICT)
         if locked_device and locked_device != device_id:
             # Check if this is an privileged OWNER key (Bypass Lock)
             if category == 'OWNER':
-                print(f"[AUTH] OWNER BYPASS: Admin {clean_key} verified on new Hardware {device_id}")
-                # We update the primary device_id to the most recent owner machine
+                print(f"[AUTH] OWNER OVERRIDE: Admin {clean_key} verified on new Hardware {device_id}")
             else:
                 # STRICT DEVICE LOCK: Key is already bound to another hardware signature
-                print(f"[AUTH] SECURITY ALERT: Key {clean_key} breach attempt! New device {device_id} tried using a key locked to {locked_device}")
-                return jsonify({"valid": False, "message": "CRITICAL: This license is already locked to another device system."}), 200
+                print(f"[AUTH] SECURITY ALERT: Key {clean_key} breach attempt! Device {device_id} tried stealing key from {locked_device}")
+                return jsonify({"valid": False, "message": "SECURITY ALERT: This License is already registered to a different computer."}), 200
             
         # If no device is locked yet, or if it's an OWNER update
         if not locked_device or category == 'OWNER':
-            print(f"[AUTH] Hardware Bond Established: Binding Key {clean_key} to Identity {device_id}")
+            print(f"[AUTH] Identity Bound: Locking Key {clean_key} to HWID {device_id}")
         
         # Update last access and metadata (Silenly capture Geo/IP)
         ip_addr = request.remote_addr
-        # Handle Render's Forwarded-For
+        # Handle Render's Forwarded-For (Trusted Cloud Proxy)
         if request.headers.get('X-Forwarded-For'):
             ip_addr = request.headers.get('X-Forwarded-For').split(',')[0]
             
@@ -845,12 +845,12 @@ def validate_license():
         update_q = "UPDATE licenses SET status='ACTIVE', device_id=%s, last_access_date=CURRENT_TIMESTAMP, usage_count = COALESCE(usage_count, 0) + 1 WHERE UPPER(key_code)=%s" if db_type == 'postgres' else "UPDATE licenses SET status='ACTIVE', device_id=?, last_access_date=datetime('now'), usage_count = COALESCE(usage_count, 0) + 1 WHERE UPPER(key_code)=?"
         cur.execute(update_q, (device_id, clean_key))
         
-        # Log session
+        # Log session for historical forensic analysis
         try:
             cur.execute("INSERT INTO user_sessions (license_key, device_id, ip_address, user_agent, timestamp) VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP)", 
                         (clean_key, device_id, ip_addr, request.headers.get('User-Agent')))
-        except:
-            pass
+        except Exception as e:
+            print(f"[DB-LOG] Session log fail: {e}")
             
         conn.commit()
         
@@ -978,16 +978,15 @@ def verify_access(key, device_id):
             if datetime.datetime.utcnow() > expiry_date.replace(tzinfo=None):
                 return False, "LICENSE_EXPIRED"
         
-        # Check blockage
         if status == 'BLOCKED': 
             return False, "LICENSE_BLOCKED"
             
-        if status != 'ACTIVE' and status != 'PENDING': 
-            return False, "LICENSE_INACTIVE"
+        # DEVICE HARWARE CHECK ENFORCEMENT
+        if locked_device and locked_device != device_id:
+            if category != "OWNER":
+               print(f"[SECURITY] Critical Mismatch detected during Predict path: {key} vs {device_id}")
+               return False, "DEVICE_MISMATCH"
             
-        # We still verify the key is ALMOST bound to this device or is a valid floating key
-        # Removed strict DEVICE_MISMATCH to allow "One License for All" behavior
-        
         return True, None
     except Exception as e:
         print(f"[AUTH] verify_access error: {e}")
