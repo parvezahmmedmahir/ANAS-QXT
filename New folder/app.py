@@ -797,8 +797,9 @@ def validate_license():
         row = cur.fetchone()
         
         if not row:
-            print(f"[AUTH] Invalid Key Attempt: {clean_key} (NOT FOUND IN DB)")
-            return jsonify({"valid": False, "message": "Invalid License Key. Please check the master code."}), 200
+            db_mode = "SUPABASE" if db_type == 'postgres' else "LOCAL_SQLITE"
+            print(f"[AUTH] ❌ INVALID ACCESS: Token '{clean_key}' not found in {db_mode} database.")
+            return jsonify({"valid": False, "message": "Invalid Authorization Token. Contact System Admin."}), 200
             
         category, status, locked_device, expiry_date = row
         
