@@ -1373,9 +1373,10 @@
           '127.0.0.1',
           'quantumxpro.com',
           'yourdomain.com',
-          'vercel.app',  // Allow all Vercel deployments
-          'vercel.sh',    // Allow Vercel preview deployments
-          'onrender.com'  // Allow Render deployments
+          'vercel.app',
+          'vercel.sh',
+          'onrender.com',
+          'quantum-x-pro-backend.onrender.com'
         ];
         const currentDomain = window.location.hostname;
         const isAllowed = ALLOWED_DOMAINS.some(domain => currentDomain.includes(domain)) ||
@@ -1447,7 +1448,8 @@
           console.log(`[GUARDIAN] Analyzing Hardware Signature: ${deviceId}`);
 
           const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-          const API_BASE = isLocal ? 'http://127.0.0.1:5000' : window.location.origin;
+          const PROD_URL = 'https://quantum-x-pro-backend.onrender.com';
+          const API_BASE = isLocal ? 'http://127.0.0.1:5000' : (window.location.hostname.includes('onrender.com') ? window.location.origin : PROD_URL);
           const statusIndicator = document.getElementById('system-status-indicator');
 
           const response = await fetch(`${API_BASE}/api/check_device_sync`, {
@@ -1479,7 +1481,8 @@
       async function checkSystemDB() {
         try {
           const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-          const API_BASE = isLocal ? 'http://127.0.0.1:5000' : window.location.origin;
+          const PROD_URL = 'https://quantum-x-pro-backend.onrender.com';
+          const API_BASE = isLocal ? 'http://127.0.0.1:5000' : (window.location.hostname.includes('onrender.com') ? window.location.origin : PROD_URL);
           const statusEl = document.getElementById('system-status-indicator');
 
           const resp = await fetch(`${API_BASE}/test`);
@@ -1558,7 +1561,8 @@
         const lk = localStorage.getItem('QUANTUM_LICENSE_KEY');
         if (!lk) return;
         const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-        const API_BASE = isLocal ? 'http://127.0.0.1:5000' : window.location.origin;
+        const PROD_URL = 'https://quantum-x-pro-backend.onrender.com';
+        const API_BASE = isLocal ? 'http://127.0.0.1:5000' : (window.location.hostname.includes('onrender.com') ? window.location.origin : PROD_URL);
         const fid = await getFingerprint();
 
         fetch(`${API_BASE}/api/track_activity`, {
@@ -1590,7 +1594,8 @@
         try {
           const deviceId = await getFingerprint();
           const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-          const API_BASE = isLocal ? 'http://127.0.0.1:5000' : window.location.origin;
+          const PROD_URL = 'https://quantum-x-pro-backend.onrender.com';
+          const API_BASE = isLocal ? 'http://127.0.0.1:5000' : (window.location.hostname.includes('onrender.com') ? window.location.origin : PROD_URL);
 
           const response = await fetch(`${API_BASE}/api/validate_license`, {
             method: 'POST',
@@ -2191,7 +2196,9 @@
 
 
       /* 3. LOGIC & BACKEND CONNECTION */
-      const BACKEND_URL = "http://localhost:5000/predict";
+      const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+      const PROD_URL = 'https://quantum-x-pro-backend.onrender.com';
+      const BACKEND_URL = isLocal ? 'http://127.0.0.1:5000' : (window.location.hostname.includes('onrender.com') ? window.location.origin : PROD_URL);
       // Secret handling moved to backend for security (No visible passwords in HTML)
 
       // Dom & Logic same as before...
@@ -2282,11 +2289,9 @@
 
           try {
             // Universal API Logic
-            const isLocal = window.location.hostname === 'localhost' ||
-              window.location.hostname === '127.0.0.1' ||
-              window.location.protocol === 'file:';
-
-            const API_BASE = isLocal ? 'http://127.0.0.1:5000' : window.location.origin;
+            const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+            const PROD_URL = 'https://quantum-x-pro-backend.onrender.com';
+            const API_BASE = isLocal ? 'http://127.0.0.1:5000' : (window.location.hostname.includes('onrender.com') ? window.location.origin : PROD_URL);
             // -------------------------        // SECURITY: Pass License & Device ID
             const licenseKey = localStorage.getItem('QUANTUM_LICENSE_KEY');
             const deviceId = await getFingerprint();
