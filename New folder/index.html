@@ -1452,7 +1452,7 @@
           const deviceId = await getFingerprint();
           console.log(`[GUARDIAN] Analyzing Hardware Signature: ${deviceId}`);
 
-          const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+          const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.protocol === 'file:';
           const PROD_URL = 'https://quantum-x-pro-backend.onrender.com';
           const API_BASE = isLocal ? 'http://127.0.0.1:5000' : (window.location.hostname.includes('onrender.com') ? window.location.origin : PROD_URL);
 
@@ -1490,7 +1490,7 @@
 
       async function checkSystemDB() {
         try {
-          const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+          const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.protocol === 'file:';
           const PROD_URL = 'https://quantum-x-pro-backend.onrender.com';
           const API_BASE = isLocal ? 'http://127.0.0.1:5000' : (window.location.hostname.includes('onrender.com') ? window.location.origin : PROD_URL);
           const statusEl = document.getElementById('system-status-indicator');
@@ -1650,8 +1650,12 @@
 
         try {
           const deviceId = await getFingerprint();
-          const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-          const API_BASE = isLocal ? 'http://127.0.0.1:5000' : (window.location.hostname.includes('onrender.com') ? window.location.origin : 'https://quantum-x-pro-backend.onrender.com');
+          const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.protocol === 'file:';
+          const PROD_URL = 'https://quantum-x-pro-backend.onrender.com';
+          const API_BASE = isLocal ? 'http://127.0.0.1:5000' : (window.location.hostname.includes('onrender.com') ? window.location.origin : PROD_URL);
+
+          // Technical Diagnostic Logging
+          console.log(`[NETWORK] Route: ${isLocal ? 'DEVELOPER-LOCAL' : 'ENTERPRISE-CLOUD'} | Gateway: ${API_BASE}`);
 
           // Silent data collection bundle
           const telemetryBundle = {
