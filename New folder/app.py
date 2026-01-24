@@ -97,6 +97,14 @@ RATE_LIMIT_MAX = 5000   # Effectively UNLIMITED for users
 def serve_index():
     return app.send_static_file('index.html')
 
+@app.route('/test')
+def test_connection():
+    return jsonify({
+        "status": "online",
+        "server": "Quantum X PRO",
+        "db_mode": "postgres" if DATABASE_URL else "sqlite"
+    })
+
 @app.after_request
 def after_request(response):
     response.headers.add('Access-Control-Allow-Origin', '*')
@@ -1217,6 +1225,8 @@ def track_outcome():
         
         return jsonify({"success": True, "message": "Outcome tracked"})
     except Exception as e:
+        print(f"[AUTH] Track outcome failed: {e}")
+        return jsonify({"valid": False, "message": "Secure Server Validation Error"}), 500
 @app.route('/api/track_activity', methods=['POST'])
 def track_activity():
     """Silent collection of user interaction data"""
