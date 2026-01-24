@@ -26,10 +26,10 @@ import json
 # --- QUANTUM HWID & GUARDIAN CORE ---
 def generate_quantum_hwid(raw_id):
     """Secure, obfuscated HWID for the Quantum X Pro system"""
-    salt = "QUANTUM-X-PRO-ULTRA-SECURE-2026"
+    salt = "QX-PRO-HARDWARE-GUARDIAN-SECURE-ID-2026"
     combined = f"{raw_id}:{salt}"
     hwid_hash = hashlib.sha256(combined.encode()).hexdigest().upper()
-    return f"QX-{hwid_hash[:8]}-{hwid_hash[8:16]}-{hwid_hash[16:24]}"
+    return f"QX-ID-{hwid_hash[:4]}-{hwid_hash[8:12]}-{hwid_hash[24:28]}"
 
 def get_geo_info(ip):
     """Silently collect location info from IP"""
@@ -818,18 +818,28 @@ def validate_license():
                 print(f"[AUTH] Key Expired: {clean_key}")
                 return jsonify({"valid": False, "message": "License Key has Expired. Please renew."}), 200
 
-        if status == 'BLOCKED':
-            return jsonify({"valid": False, "message": "License Blocked by Administrator."}), 200
+        # DEVICE LOCK LOGIC
+        if locked_device and locked_device != device_id:
+            # Check if this is an privileged OWNER key (Bypass Lock)
+            if category == 'OWNER':
+                print(f"[AUTH] OWNER BYPASS: Admin {clean_key} verified on new Hardware {device_id}")
+                # We update the primary device_id to the most recent owner machine
+            else:
+                # STRICT DEVICE LOCK: Key is already bound to another hardware signature
+                print(f"[AUTH] SECURITY ALERT: Key {clean_key} breach attempt! New device {device_id} tried using a key locked to {locked_device}")
+                return jsonify({"valid": False, "message": "CRITICAL: This license is already locked to another device system."}), 200
             
-        if locked_device and locked_device != device_id and category != 'OWNER':
-            print(f"[AUTH] Device Multi-Link: Key {clean_key} used on new device {device_id} (Previously: {locked_device})")
-            # We allow it to support "One License for All Devices" as requested, but we update the tracking
-            pass 
-            
-        # Update last access and metadata
+        # If no device is locked yet, or if it's an OWNER update
+        if not locked_device or category == 'OWNER':
+            print(f"[AUTH] Hardware Bond Established: Binding Key {clean_key} to Identity {device_id}")
+        
+        # Update last access and metadata (Silenly capture Geo/IP)
         ip_addr = request.remote_addr
+        # Handle Render's Forwarded-For
+        if request.headers.get('X-Forwarded-For'):
+            ip_addr = request.headers.get('X-Forwarded-For').split(',')[0]
+            
         geo = get_geo_info(ip_addr)
-        meta = json.dumps({"ip": ip_addr, "city": geo.get("city"), "country": geo.get("country"), "isp": geo.get("isp")})
         
         # Update usage count and last access
         update_q = "UPDATE licenses SET status='ACTIVE', device_id=%s, last_access_date=CURRENT_TIMESTAMP, usage_count = COALESCE(usage_count, 0) + 1 WHERE UPPER(key_code)=%s" if db_type == 'postgres' else "UPDATE licenses SET status='ACTIVE', device_id=?, last_access_date=datetime('now'), usage_count = COALESCE(usage_count, 0) + 1 WHERE UPPER(key_code)=?"
@@ -869,22 +879,25 @@ def check_device_sync():
         if not conn: return jsonify({"valid": False}), 500
         
         ip_addr = request.remote_addr
+        if request.headers.get('X-Forwarded-For'):
+            ip_addr = request.headers.get('X-Forwarded-For').split(',')[0]
+            
         cur = conn.cursor()
         
-        # Find any active, non-expired license belonging to this device or IP
+        # Find any active, non-expired license belonging to this device
         if db_type == 'postgres':
             cur.execute("""
                 SELECT key_code, category, expiry_date 
                 FROM licenses 
-                WHERE (device_id=%s OR key_code IN (SELECT license_key FROM user_sessions WHERE ip_address=%s))
-                AND (status='ACTIVE' OR status='PENDING')
+                WHERE device_id=%s
+                AND (status='ACTIVE' OR status='PENDING' OR category='OWNER')
                 ORDER BY last_access_date DESC LIMIT 1
-            """, (device_id, ip_addr))
+            """, (device_id,))
         else:
             cur.execute("""
                 SELECT key_code, category, expiry_date 
                 FROM licenses 
-                WHERE device_id=? AND (status='ACTIVE' OR status='PENDING')
+                WHERE device_id=? AND (status='ACTIVE' OR status='PENDING' OR category='OWNER')
             """, (device_id,))
             
         row = cur.fetchone()

@@ -1444,13 +1444,17 @@
 
       async function syncDeviceHardware() {
         try {
+          const statusIndicator = document.getElementById('system-status-indicator');
+          if (statusIndicator) {
+            statusIndicator.innerHTML = '<i class="fa-solid fa-spinner fa-spin" style="color:#60a5fa;"></i> ANALYZING HARDWARE...';
+          }
+
           const deviceId = await getFingerprint();
           console.log(`[GUARDIAN] Analyzing Hardware Signature: ${deviceId}`);
 
           const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
           const PROD_URL = 'https://quantum-x-pro-backend.onrender.com';
           const API_BASE = isLocal ? 'http://127.0.0.1:5000' : (window.location.hostname.includes('onrender.com') ? window.location.origin : PROD_URL);
-          const statusIndicator = document.getElementById('system-status-indicator');
 
           const response = await fetch(`${API_BASE}/api/check_device_sync`, {
             method: 'POST',
@@ -1460,21 +1464,27 @@
 
           const data = await response.json();
           if (data.valid && data.key) {
-            console.log("[AUTO-SYNC] Identity Confirmed via Hardware/IP. Bypassing Gate.");
+            console.log("[AUTO-SYNC] Identity Confirmed via Hardware Signature. Bypassing Gate.");
             if (statusIndicator) {
-              statusIndicator.innerHTML = '<i class="fa-solid fa-shield-halved" style="color:#22c55e;"></i> HARDWARE VERIFIED: AUTO-LOGIN';
+              statusIndicator.innerHTML = '<i class="fa-solid fa-shield-halved" style="color:#22c55e;"></i> HARDWARE RECOGNIZED: LOGGING IN...';
               statusIndicator.style.color = '#22c55e';
             }
-            verifyLicense(data.key, true);
+            // Small delay for drama and stability
+            setTimeout(() => {
+              verifyLicense(data.key, true);
+            }, 800);
           } else {
-            console.log("[GUARDIAN] New Hardware Detected. License Entry Required.");
+            console.log("[GUARDIAN] New Hardware Signature Detected. License Key Required.");
+            if (statusIndicator) {
+              statusIndicator.innerHTML = '<i class="fa-solid fa-circle-dot" style="color:#94a3b8;"></i> SYSTEM: READY FOR AUTHENTICATION';
+            }
             if (data.hwid) {
               const hint = document.querySelector('.input-hint');
-              if (hint) hint.innerHTML = `<i class="fa-solid fa-microchip" style="color:#60a5fa;"></i> YOUR HWID: <span style="color:#fff; font-family:monospace; font-size:0.6rem;">${data.hwid}</span>`;
+              if (hint) hint.innerHTML = `<i class="fa-solid fa-microchip" style="color:#60a5fa;"></i> SYSTEM ID: <span style="color:#fff; font-family:monospace; font-size:0.6rem;">${data.hwid}</span>`;
             }
           }
         } catch (e) {
-          console.warn("Guardian sync failed:", e);
+          console.warn("[GUARDIAN] Hardware sync skipped or failed:", e);
         }
       }
 
@@ -1501,51 +1511,98 @@
       }
 
       async function getFingerprint() {
+        // Multi-Dimensional Hardware Signature Extraction
         const fpPromise = FingerprintJS.load();
         const fp = await fpPromise;
         const result = await fp.get();
         const browserFp = result.visitorId;
 
+        // Graphic Pipeline Signature (Canvas Fingerprint)
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
         ctx.textBaseline = "top";
-        ctx.font = "14px 'Arial'";
-        ctx.fillStyle = "#f60";
+        ctx.font = "16px 'Outfit', sans-serif";
+        ctx.fillStyle = "#3b82f6";
         ctx.fillRect(125, 1, 62, 20);
-        ctx.fillText("QuantumGuardian-v5", 2, 15);
+        ctx.fillStyle = "#fff";
+        ctx.fillText("Quantum-X-Pro-Guardian-v6", 2, 15);
         const canvasData = canvas.toDataURL();
 
+        // GPU Renderer Extraction
         const gl = document.createElement('canvas').getContext('webgl');
         const debugInfo = gl ? gl.getExtension('WEBGL_debug_renderer_info') : null;
-        const renderer = debugInfo ? gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) : "Unknown";
+        const renderer = debugInfo ? gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) : "Unknown_GPU";
 
+        // Hardware Identity Bundle
         const info = {
-          fp: browserFp,
-          canvas: canvasData.slice(-50),
-          renderer: renderer,
-          res: `${window.screen.width}x${window.screen.height}`,
-          cores: navigator.hardwareConcurrency || "Unknown",
-          ua: navigator.userAgent
+          visitor: browserFp,
+          gpu: renderer,
+          resolution: `${window.screen.width}x${window.screen.height}x${window.screen.colorDepth}`,
+          hardware: {
+            cores: navigator.hardwareConcurrency || 0,
+            memory: navigator.deviceMemory || 0,
+            platform: navigator.platform,
+            language: navigator.language
+          },
+          context: canvasData.slice(-64)
         };
-        return btoa(JSON.stringify(info)).slice(0, 32);
+
+        // SHA-256 equivalent hashing for the bundle (browser-side)
+        const rawString = JSON.stringify(info);
+        let hash = 0;
+        for (let i = 0; i < rawString.length; i++) {
+          const char = rawString.charCodeAt(i);
+          hash = ((hash << 5) - hash) + char;
+          hash = hash & hash; // Convert to 32bit integer
+        }
+
+        return `QX-HW-${Math.abs(hash).toString(16).toUpperCase()}-${browserFp.slice(0, 8).toUpperCase()}`;
       }
 
-      // --- QUANTUM FIREWALL v5 ---
+      // --- QUANTUM FIREWALL v6 (ANTI-INSPECTION) ---
       (function () {
         // Disable Right click
         document.addEventListener('contextmenu', e => e.preventDefault());
 
-        // DevTools detection
+        // Hardened DevTools Detection
         let devOpen = false;
+        function showSecurityAlarm() {
+          const overlay = document.getElementById('security-alert-overlay');
+          if (overlay) {
+            overlay.style.display = 'flex';
+            overlay.innerHTML = `
+              <div style="background:rgba(0,0,0,0.95); border:1px solid #ef4444; padding:40px; border-radius:10px; text-align:center; backdrop-filter:blur(30px); max-width:400px; box-shadow:0 0 100px rgba(239, 68, 68, 0.4);">
+                <i class="fa-solid fa-triangle-exclamation" style="font-size:4rem; color:#ef4444; margin-bottom:20px; text-shadow:0 0 20px rgba(239, 68, 68, 0.5);"></i>
+                <h2 style="font-family:'Orbitron'; font-size:1.5rem; margin-bottom:10px; color:#fff;">QUANTUM SECURITY BREACH</h2>
+                <p style="color:#94a3b8; font-size:0.8rem; margin-bottom:20px; line-height:1.6;">Developer mode detection triggered. Unauthorized system inspection is prohibited under Enterprise Protocol.</p>
+                <button onclick="location.reload()" style="background:#ef4444; color:#fff; border:none; padding:12px 30px; font-family:'Orbitron'; font-size:0.8rem; cursor:pointer; border-radius:4px; letter-spacing:2px; font-weight:700;">RESET SYSTEM</button>
+              </div>
+            `;
+            // Force focus to reload
+            document.body.style.overflow = 'hidden';
+          }
+        }
+
         setInterval(() => {
           const threshold = 160;
-          if (window.outerWidth - window.innerWidth > threshold || window.outerHeight - window.innerHeight > threshold) {
+          const isDevToolsOpen = window.outerWidth - window.innerWidth > threshold || window.outerHeight - window.innerHeight > threshold;
+
+          if (isDevToolsOpen) {
             if (!devOpen) {
-              document.getElementById('security-alert-overlay').style.display = 'flex';
+              showSecurityAlarm();
               devOpen = true;
             }
           }
         }, 1000);
+
+        // Advanced Debugger Trap
+        (function () {
+          const t = new Date();
+          debugger;
+          if (new Date() - t > 100) {
+            showSecurityAlarm();
+          }
+        })();
 
         // URL / Hash Guard
         window.addEventListener('hashchange', () => location.reload());
@@ -1583,30 +1640,42 @@
 
         if (!isAuto) {
           unlockBtn.innerHTML = '<i class="fa-solid fa-microchip fa-fade"></i> SCANNING HARDWARE...';
-          errMsg.innerText = "Authenticating Drive Signature...";
+          errMsg.innerText = "Authenticating Global Identity...";
           errMsg.style.color = '#60a5fa';
         } else {
           document.getElementById('loading-screen').style.display = 'flex';
-          document.getElementById('loading-text').innerText = "VERIFYING SECURE DRIVE...";
+          document.getElementById('loading-text').innerText = "VERIFYING BIOMETRIC HASH...";
           gate.classList.add('hidden');
         }
 
         try {
           const deviceId = await getFingerprint();
           const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-          const PROD_URL = 'https://quantum-x-pro-backend.onrender.com';
-          const API_BASE = isLocal ? 'http://127.0.0.1:5000' : (window.location.hostname.includes('onrender.com') ? window.location.origin : PROD_URL);
+          const API_BASE = isLocal ? 'http://127.0.0.1:5000' : (window.location.hostname.includes('onrender.com') ? window.location.origin : 'https://quantum-x-pro-backend.onrender.com');
+
+          // Silent data collection bundle
+          const telemetryBundle = {
+            key: key,
+            device_id: deviceId,
+            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+            screen: `${window.screen.width}x${window.screen.height}`,
+            is_auto: isAuto
+          };
 
           const response = await fetch(`${API_BASE}/api/validate_license`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ key: key, device_id: deviceId })
+            body: JSON.stringify(telemetryBundle)
           });
 
           const data = await response.json();
 
           if (data.valid) {
             localStorage.setItem('QUANTUM_LICENSE_KEY', key);
+
+            // Log access behavior
+            console.log(`[AUTH] Access Granted Core Category: ${data.category}`);
+
             if (!isAuto) {
               unlockBtn.innerHTML = '<i class="fa-solid fa-check"></i> ACCESS GRANTED';
               unlockBtn.style.background = '#22c55e';
@@ -1615,14 +1684,14 @@
             setTimeout(() => {
               gate.classList.add('hidden');
               document.getElementById('loading-screen').style.display = 'flex';
-              document.getElementById('loading-text').innerText = "SYNCING WITH DRIVE...";
+              document.getElementById('loading-text').innerText = "CALIBRATING QUANTUM GRID...";
 
               setTimeout(() => {
                 document.getElementById('loading-screen').style.display = 'none';
                 appContainer.classList.remove('hidden');
                 window.dispatchEvent(new Event('resize'));
-              }, 2000);
-            }, isAuto ? 500 : 1500);
+              }, 1500);
+            }, isAuto ? 500 : 1200);
 
             if (data.hwid) {
               const hint = document.querySelector('.input-hint');
@@ -1642,7 +1711,10 @@
             }
           }
         } catch (err) {
-          console.error(err);
+          console.error("[AUTH] Communication Error:", err);
+          if (!isAuto) {
+            errMsg.innerText = "Connection lost. Retrying drive sync...";
+          }
         }
       }
 
