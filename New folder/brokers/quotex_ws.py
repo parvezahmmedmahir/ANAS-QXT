@@ -3,6 +3,8 @@ import json
 import time
 import threading
 import requests
+import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 class QuotexWSAdapter:
     def __init__(self, config=None):
@@ -40,8 +42,8 @@ class QuotexWSAdapter:
                     timestamp = int(time.time() * 1000)
                     handshake_url = f"{node}/socket.io/?EIO=3&transport=polling&t={timestamp}"
                     
-                    # Attempt 1: Direct Requests with Browser Headers
-                    resp = self.session.get(handshake_url, headers=self.headers, timeout=10)
+                    # Attempt 1: Direct Requests with Bypass (Ignore SSL for Cert Issues)
+                    resp = self.session.get(handshake_url, headers=self.headers, timeout=10, verify=False)
                     output = resp.text
                     
                     if resp.status_code == 200 and "sid" in output:
@@ -50,18 +52,18 @@ class QuotexWSAdapter:
                             self.connected = True
                             return True
 
-                    # Attempt 2: Fallback to Curl for TLS Fingerprint Variation
-                    if "Just a moment" in output or resp.status_code == 403:
-                        print(f"[QUOTEX-WS] ⚠️ Cloudflare on {node}. Rotating TLS Cipher Fingerprint...")
+                    # Attempt 2: Fallback to Curl with -k (Insecure) flag
+                    if "Just a moment" in output or resp.status_code == 403 or "SSLError" in str(output):
+                        print(f"[QUOTEX-WS] ⚠️ SSL/CF Block on {node}. Using Insecure TLS Bridge...")
                         headers_curl = []
                         for k, v in self.headers.items():
                             headers_curl.extend(["-H", f"{k}: {v}"])
                         
-                        cmd = ["curl", "-k", "-s"] + headers_curl + [handshake_url]
+                        cmd = ["curl", "-k", "-s", "-L"] + headers_curl + [handshake_url]
                         result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
                         if result.returncode == 0 and "sid" in result.stdout:
                             if self._parse_sid(result.stdout):
-                                print(f"[QUOTEX-WS] ✅ SSL/TLS Bypass Success via Curl on node: {node}")
+                                print(f"[QUOTEX-WS] ✅ SSL Tunnel Bypass Success on: {node}")
                                 self.connected = True
                                 return True
                     
