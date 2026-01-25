@@ -1,17 +1,24 @@
-flask
-flask-cors
-websocket-client
-requests
-pandas
-numpy
-# APIs from GitHub
-git+https://github.com/cleitonleonel/pyquotex.git
-git+https://github.com/n1nj4z33/iqoptionapi.git
-supabase
-psycopg2-binary
-python-dotenv
-pytz
-nest-asyncio
-gunicorn
-# Note: Binolla and PocketOption libs might require manual setup or specific dependencies
-pyquotex
+# QUANTUM X PRO - Python Dependencies
+
+# Core Web Framework
+Flask==3.0.0
+Flask-CORS==4.0.0
+
+# Database
+psycopg2-binary==2.9.9
+python-dotenv==1.0.0
+
+# HTTP Requests
+requests==2.31.0
+urllib3==2.1.0
+
+# Quotex Integration (NEW - Cloudflare Bypass)
+pyquotex==1.3.1
+
+# Async Support
+aiohttp==3.9.1
+asyncio==3.4.3
+
+# Optional: Enhanced features
+numpy==1.26.2
+pandas==2.1.4
