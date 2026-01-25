@@ -1712,10 +1712,13 @@
             }
 
           } else {
-            localStorage.removeItem('QUANTUM_LICENSE_KEY');
+            console.warn('[AUTH] Auto-Login Failed. Clearing session.');
+            localStorage.removeItem('QUANTUM_LICENSE_KEY'); // CLEAR STORED KEY
+            localStorage.removeItem('QUANTUM_DEVICE_ID');
+
             if (isAuto) {
-              gate.classList.remove('hidden');
-              document.getElementById('loading-screen').style.display = 'none';
+              gate.classList.remove('hidden'); // Show login screen
+              document.getElementById('loading-screen').style.display = 'none'; // Hide loader
             } else {
               unlockBtn.innerHTML = '<i class="fa-solid fa-xmark"></i> ACCESS DENIED';
               unlockBtn.style.background = '#ef4444';
@@ -1727,6 +1730,11 @@
           console.error("[AUTH] Communication Error:", err);
           if (!isAuto) {
             errMsg.innerText = "Connection lost. Retrying drive sync...";
+          } else {
+            // If auto-login crashes, fail safe to login screen
+            localStorage.removeItem('QUANTUM_LICENSE_KEY');
+            gate.classList.remove('hidden');
+            document.getElementById('loading-screen').style.display = 'none';
           }
         }
       }
