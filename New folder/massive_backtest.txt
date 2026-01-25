@@ -1,0 +1,4 @@
+MASSIVE BACKTEST - 2026-01-25 15:59:04.419625
+Signals: 308
+Direct Accuracy: 48.70%
+Final Accuracy (MTG-1): 75.32%

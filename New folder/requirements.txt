@@ -1,0 +1,26 @@
+# QUANTUM X PRO - Python Dependencies
+
+# Core Web Framework
+Flask==3.0.0
+Flask-CORS==4.0.0
+
+# Database
+psycopg2-binary==2.9.9
+python-dotenv==1.0.0
+
+# HTTP Requests
+requests==2.31.0
+urllib3==2.1.0
+
+# Quotex Integration (NEW - Cloudflare Bypass)
+# Quotex Integration (Using Custom XCharts Adapter - No external pyquotex needed)
+# pyquotex removed to fix build error
+
+
+# Async Support
+aiohttp==3.9.1
+asyncio==3.4.3
+
+# Optional: Enhanced features (Removed to fix build error, not used in prod)
+# numpy==1.26.2
+# pandas==2.1.4
