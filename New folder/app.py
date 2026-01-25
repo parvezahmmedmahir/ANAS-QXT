@@ -842,16 +842,69 @@ def validate_license():
             
         geo = get_geo_info(ip_addr)
         
-        # Update usage count and last access
-        update_q = "UPDATE licenses SET status='ACTIVE', device_id=%s, last_access_date=CURRENT_TIMESTAMP, usage_count = COALESCE(usage_count, 0) + 1 WHERE UPPER(key_code)=%s" if db_type == 'postgres' else "UPDATE licenses SET status='ACTIVE', device_id=?, last_access_date=datetime('now'), usage_count = COALESCE(usage_count, 0) + 1 WHERE UPPER(key_code)=?"
-        cur.execute(update_q, (device_id, clean_key))
+        # Build comprehensive user agent data
+        user_agent_raw = request.headers.get('User-Agent', 'Unknown')
+        user_agent_data = {
+            "raw": user_agent_raw,
+            "ip": ip_addr,
+            "location": f"{geo.get('city', 'Unknown')}, {geo.get('country', 'Unknown')}",
+            "isp": geo.get('isp', 'Unknown')
+        }
+        user_agent_str = json.dumps(user_agent_data)
         
-        # Log session for historical forensic analysis
+        # Update MAIN licenses table with ALL data
+        if db_type == 'postgres':
+            # Set activation_date only if it's the first time (currently NULL)
+            update_q = """
+                UPDATE licenses SET 
+                    status='ACTIVE', 
+                    device_id=%s, 
+                    ip_address=%s,
+                    user_agent=%s,
+                    activation_date=COALESCE(activation_date, CURRENT_TIMESTAMP),
+                    last_access_date=CURRENT_TIMESTAMP, 
+                    usage_count = COALESCE(usage_count, 0) + 1 
+                WHERE UPPER(key_code)=%s
+            """
+            cur.execute(update_q, (device_id, ip_addr, user_agent_str, clean_key))
+        else:
+            update_q = """
+                UPDATE licenses SET 
+                    status='ACTIVE', 
+                    device_id=?, 
+                    ip_address=?,
+                    user_agent=?,
+                    activation_date=COALESCE(activation_date, datetime('now')),
+                    last_access_date=datetime('now'), 
+                    usage_count = COALESCE(usage_count, 0) + 1 
+                WHERE UPPER(key_code)=?
+            """
+            cur.execute(update_q, (device_id, ip_addr, user_agent_str, clean_key))
+        
+        print(f"[AUTH] ✅ Main licenses table updated: {clean_key} | Device: {device_id[:20]}... | IP: {ip_addr}")
+        
+        # Also log to user_sessions table (for detailed tracking)
         try:
-            cur.execute("INSERT INTO user_sessions (license_key, device_id, ip_address, user_agent, timestamp) VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP)", 
-                        (clean_key, device_id, ip_addr, request.headers.get('User-Agent')))
+            timezone_str = data.get('timezone', 'Unknown')
+            screen_str = data.get('screen', '0x0')
+            platform_str = request.headers.get('Sec-Ch-Ua-Platform', 'Unknown').strip('"')
+            
+            if db_type == 'postgres':
+                cur.execute("""
+                    INSERT INTO user_sessions 
+                    (license_key, device_id, ip_address, user_agent, timezone, resolution, platform, login_time) 
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+                """, (clean_key, device_id, ip_addr, user_agent_str, timezone_str, screen_str, platform_str))
+            else:
+                cur.execute("""
+                    INSERT INTO user_sessions 
+                    (license_key, device_id, ip_address, user_agent, timezone, resolution, platform, login_time) 
+                    VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                """, (clean_key, device_id, ip_addr, user_agent_str, timezone_str, screen_str, platform_str))
+            
+            print(f"[AUTH] ✅ Session logged in user_sessions table")
         except Exception as e:
-            print(f"[DB-LOG] Session log fail: {e}")
+            print(f"[DB-LOG] Session log warning: {e}")
             
         conn.commit()
         
