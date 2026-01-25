@@ -5,7 +5,7 @@ BROKER_CONFIG = {
     "QUOTEX": {
         # Get these from your Quotex account
         "email": "immahir01@gmail.com",
-        "password": "MAHIR1122",
+        "password": "MahirANAS1122",
         "live_account": True  # False = Practice, True = Real Money
     },
     "IQOPTION": {

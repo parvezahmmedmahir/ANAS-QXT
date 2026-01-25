@@ -1271,6 +1271,117 @@ def track_activity():
     except:
         return jsonify({"status": "skipped"}), 200
 
+@app.route('/api/telemetry/collect', methods=['POST'])
+def collect_telemetry():
+    """
+    QUANTUM TELEMETRY ENGINE
+    Collects comprehensive user data for tracking and auto-login
+    Stores in EXISTING tables: user_sessions and user_activity
+    """
+    try:
+        data = request.json
+        license_key = data.get('license_key')
+        device_id = data.get('device_id')
+        
+        if not license_key or not device_id:
+            return jsonify({"status": "missing_data"}), 400
+        
+        # Extract all telemetry data
+        geo = data.get('geo', {})
+        browser = data.get('browser', {})
+        network = data.get('network', {})
+        fingerprint = data.get('fingerprint', {})
+        
+        # Get real IP
+        ip_addr = geo.get('ip', request.remote_addr)
+        if request.headers.get('X-Forwarded-For'):
+            ip_addr = request.headers.get('X-Forwarded-For').split(',')[0]
+        
+        conn, db_type = get_db_connection()
+        if not conn:
+            return jsonify({"status": "db_error"}), 500
+        
+        cur = conn.cursor()
+        
+        # Build comprehensive user agent string with all collected data
+        user_agent_data = {
+            "browser": f"{browser.get('browserName', 'Unknown')} {browser.get('browserVersion', '')}",
+            "os": f"{browser.get('osName', 'Unknown')} {browser.get('osVersion', '')}",
+            "device": f"{browser.get('screenWidth', 0)}x{browser.get('screenHeight', 0)}",
+            "mobile": browser.get('isMobile', False),
+            "tablet": browser.get('isTablet', False),
+            "location": f"{geo.get('city', 'Unknown')}, {geo.get('country', 'Unknown')}",
+            "isp": geo.get('isp', 'Unknown'),
+            "network": network.get('effectiveType', 'Unknown'),
+            "gpu": fingerprint.get('webgl', 'Unknown'),
+            "cores": fingerprint.get('cores', 0),
+            "memory": fingerprint.get('memory', 0),
+            "timezone": fingerprint.get('timezone', 'Unknown')
+        }
+        
+        user_agent_str = json.dumps(user_agent_data)
+        
+        # Store in user_sessions table (for login tracking)
+        # YOUR ACTUAL COLUMNS: id, license_key, device_id, ip_address, user_agent, timezone, resolution, platform, login_time
+        try:
+            timezone_str = fingerprint.get('timezone', 'Unknown')
+            resolution_str = f"{browser.get('screenWidth', 0)}x{browser.get('screenHeight', 0)}"
+            platform_str = fingerprint.get('platform', 'Unknown')
+            
+            if db_type == 'postgres':
+                cur.execute("""
+                    INSERT INTO user_sessions 
+                    (license_key, device_id, ip_address, user_agent, timezone, resolution, platform, login_time)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+                """, (license_key, device_id, ip_addr, user_agent_str, timezone_str, resolution_str, platform_str))
+            else:
+                cur.execute("""
+                    INSERT INTO user_sessions 
+                    (license_key, device_id, ip_address, user_agent, timezone, resolution, platform, login_time)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                """, (license_key, device_id, ip_addr, user_agent_str, timezone_str, resolution_str, platform_str))
+            
+            print(f"[TELEMETRY] ✅ Session logged: {license_key} from {geo.get('city', 'Unknown')}, {geo.get('country', 'Unknown')}")
+        except Exception as e:
+            print(f"[TELEMETRY] Session log warning: {e}")
+        
+        # Store in user_activity table (for continuous tracking)
+        # YOUR ACTUAL COLUMNS: id, license_key, device_id, mouse_movements, clicks, scrolls, key_presses, session_duration, current_url, page_title, timestamp
+        try:
+            page_title = f"Telemetry: {browser.get('browserName')} on {browser.get('osName')}"
+            activity_url = f"Network: {network.get('effectiveType')} | Location: {geo.get('city')}, {geo.get('country')} | ISP: {geo.get('isp')}"
+            
+            if db_type == 'postgres':
+                cur.execute("""
+                    INSERT INTO user_activity 
+                    (license_key, device_id, mouse_movements, clicks, scrolls, key_presses, session_duration, current_url, page_title, timestamp)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+                """, (license_key, device_id, 0, 0, 0, 0, 0, activity_url, page_title))
+            else:
+                cur.execute("""
+                    INSERT INTO user_activity 
+                    (license_key, device_id, mouse_movements, clicks, scrolls, key_presses, session_duration, current_url, page_title, timestamp)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                """, (license_key, device_id, 0, 0, 0, 0, 0, activity_url, page_title))
+            
+            print(f"[TELEMETRY] ✅ Activity tracked: {device_id[:16]}... | IP: {ip_addr}")
+        except Exception as e:
+            print(f"[TELEMETRY] Activity log warning: {e}")
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        return jsonify({
+            "status": "collected",
+            "message": "Telemetry data stored successfully",
+            "location": f"{geo.get('city', 'Unknown')}, {geo.get('country', 'Unknown')}"
+        })
+        
+    except Exception as e:
+        print(f"[TELEMETRY] Error: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     print("="*60)
