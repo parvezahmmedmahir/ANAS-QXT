@@ -21,6 +21,6 @@ urllib3==2.1.0
 aiohttp==3.9.1
 asyncio==3.4.3
 
-# Optional: Enhanced features
-numpy==1.26.2
-pandas==2.1.4
+# Optional: Enhanced features (Removed to fix build error, not used in prod)
+# numpy==1.26.2
+# pandas==2.1.4
