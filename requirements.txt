@@ -1,4 +1,4 @@
-# QUANTUM X PRO - Python Dependencies
+# QUANTUM X PRO - Python Dependencies (Updated for Render)
 
 # Core Web Framework
 Flask==3.0.0
