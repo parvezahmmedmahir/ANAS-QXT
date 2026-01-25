@@ -1,0 +1,112 @@
+QUANTUM X PRO - VERIFIED MARKET BACKTEST
+Date: 2026-01-25 15:55:09.865431
+Overall Win Rate: 57.41% (62/108)
+
+USDEGP: CALL (65%) - WIN | Pattern: BULLISH_ENGULFING | Price near support
+USDEGP: CALL (65%) - WIN | Pattern: BULLISH_ENGULFING | Price near support
+USDEGP: CALL (65%) - WIN | RSI oversold (18.9) | Strong downtrend | Pattern: MORNING_STAR
+USDEGP: CALL (65%) - WIN | RSI oversold (28.6) | Strong downtrend | Pattern: MORNING_STAR
+USDEGP: CALL (65%) - WIN | Pattern: MORNING_STAR | Price near support
+USDZAR: CALL (65%) - LOSS | RSI oversold (28.3) | Strong downtrend | Pattern: MORNING_STAR
+USDZAR: CALL (65%) - LOSS | Pattern: MORNING_STAR | Price near support
+USDZAR: CALL (65%) - LOSS | RSI oversold (27.5) | Strong downtrend | Pattern: BULLISH_ENGULFING
+USDZAR: CALL (65%) - LOSS | Pattern: MORNING_STAR | Price near support
+USDZAR: CALL (70%) - LOSS | Strong uptrend | Pattern: MORNING_STAR | Price near support
+USDZAR: CALL (65%) - LOSS | RSI oversold (27.3) | Strong downtrend | Pattern: MORNING_STAR
+USDZAR: CALL (65%) - LOSS | Pattern: MORNING_STAR | Price near support
+USDZAR: CALL (65%) - LOSS | Pattern: BULLISH_ENGULFING | Price near support
+USDZAR: CALL (65%) - LOSS | RSI oversold (29.4) | Price near support
+EURSGD: CALL (65%) - LOSS | Pattern: MORNING_STAR | Price near support
+EURSGD: CALL (65%) - LOSS | RSI oversold (29.4) | Price near support
+USDCOP: CALL (65%) - WIN | RSI oversold (24.9) | Strong downtrend | Pattern: BULLISH_ENGULFING
+USDCOP: CALL (65%) - WIN | Pattern: MORNING_STAR | Price near support
+USDCOP: CALL (65%) - WIN | Pattern: MORNING_STAR | Price near support
+USDCOP: CALL (65%) - WIN | RSI oversold (28.2) | Strong downtrend | Pattern: BULLISH_ENGULFING
+USDCOP: CALL (65%) - WIN | Pattern: BULLISH_ENGULFING | Price near support
+USDINR: CALL (65%) - WIN | Pattern: BULLISH_ENGULFING | Price near support
+USDINR: CALL (65%) - WIN | RSI oversold (26.5) | Strong downtrend | Pattern: MORNING_STAR
+USDINR: CALL (65%) - WIN | Pattern: MORNING_STAR | Price near support
+USDINR: CALL (65%) - WIN | Pattern: MORNING_STAR | Price near support
+USDINR: CALL (65%) - WIN | RSI oversold (23.0) | Strong downtrend | Pattern: MORNING_STAR
+USDARS: CALL (70%) - LOSS | Strong uptrend | Pattern: MORNING_STAR | Price near support
+USDARS: CALL (65%) - WIN | RSI oversold (21.6) | Strong downtrend | Pattern: BULLISH_ENGULFING
+USDARS: CALL (65%) - WIN | RSI oversold (24.3) | Strong downtrend | Pattern: MORNING_STAR
+USDARS: CALL (65%) - WIN | RSI oversold (25.2) | Strong downtrend | Pattern: BULLISH_ENGULFING
+USDARS: CALL (65%) - WIN | Pattern: MORNING_STAR | Price near support
+USDARS: CALL (65%) - WIN | Pattern: MORNING_STAR | Price near support
+USDIDR: CALL (65%) - LOSS | Pattern: BULLISH_ENGULFING | Price near support
+USDIDR: CALL (65%) - LOSS | Pattern: MORNING_STAR | Price near support
+USDIDR: CALL (65%) - LOSS | RSI oversold (25.4) | Price near support
+USDIDR: CALL (65%) - LOSS | RSI oversold (28.5) | Price near support
+USDIDR: CALL (65%) - LOSS | RSI oversold (15.3) | Strong downtrend | Pattern: MORNING_STAR
+USDIDR: CALL (65%) - LOSS | Pattern: MORNING_STAR | Price near support
+USDMXN: CALL (65%) - LOSS | Pattern: BULLISH_ENGULFING | Price near support
+USDMXN: PUT (70%) - WIN | RSI overbought (75.6) | Pattern: BEARISH_ENGULFING | Price near support
+USDMXN: CALL (65%) - LOSS | RSI oversold (29.3) | Strong downtrend | Pattern: MORNING_STAR
+EURNZD: CALL (65%) - WIN | Pattern: MORNING_STAR | Price near support
+EURNZD: PUT (65%) - LOSS | Pattern: EVENING_STAR | Price near resistance
+EURNZD: CALL (65%) - WIN | RSI oversold (26.0) | Strong downtrend | Pattern: BULLISH_ENGULFING
+EURNZD: CALL (65%) - WIN | RSI oversold (26.8) | Strong downtrend | Pattern: MORNING_STAR
+EURNZD: PUT (65%) - LOSS | Pattern: EVENING_STAR | Price near resistance
+NZDCAD: CALL (65%) - WIN | RSI oversold (29.1) | Strong downtrend | Pattern: MORNING_STAR
+NZDCAD: CALL (65%) - WIN | Pattern: MORNING_STAR | Price near support
+NZDCHF: CALL (65%) - LOSS | RSI oversold (22.4) | Strong downtrend | Pattern: MORNING_STAR
+NZDJPY: CALL (65%) - WIN | Pattern: MORNING_STAR | Price near support
+NZDJPY: PUT (65%) - LOSS | RSI overbought (91.2) | Strong uptrend | Pattern: EVENING_STAR
+NZDJPY: PUT (65%) - LOSS | RSI overbought (70.5) | Strong uptrend | Pattern: EVENING_STAR
+NZDJPY: PUT (65%) - LOSS | Pattern: BEARISH_ENGULFING | Price near resistance
+NZDJPY: CALL (65%) - WIN | Pattern: BULLISH_ENGULFING | Price near support
+NZDJPY: CALL (65%) - WIN | Pattern: BULLISH_ENGULFING | Price near support
+NZDJPY: PUT (65%) - WIN | Pattern: EVENING_STAR | Price near resistance
+NZDJPY: CALL (65%) - WIN | RSI oversold (27.9) | Price near support
+NZDJPY: PUT (65%) - WIN | RSI overbought (70.2) | Price near resistance
+USDBDT: CALL (65%) - LOSS | Pattern: MORNING_STAR | Price near support
+USDBDT: CALL (65%) - LOSS | RSI oversold (21.3) | Strong downtrend | Pattern: MORNING_STAR
+USDBDT: PUT (65%) - WIN | Pattern: EVENING_STAR | Price near resistance
+USDBDT: PUT (65%) - WIN | Pattern: EVENING_STAR | Price near resistance
+USDDZD: CALL (65%) - WIN | Pattern: MORNING_STAR | Price near support
+USDDZD: CALL (65%) - LOSS | RSI oversold (26.8) | Price near support
+AUDCAD: PUT (65%) - WIN | RSI overbought (71.7) | Strong uptrend | Pattern: BEARISH_ENGULFING
+AUDCAD: PUT (65%) - WIN | RSI overbought (70.4) | Strong uptrend | Pattern: EVENING_STAR
+AUDCAD: PUT (65%) - WIN | Pattern: BEARISH_ENGULFING | Price near resistance
+AUDCAD: CALL (65%) - LOSS | RSI oversold (25.9) | Strong downtrend | Pattern: BULLISH_ENGULFING
+AUDCAD: CALL (65%) - LOSS | RSI oversold (27.0) | Strong downtrend | Pattern: BULLISH_ENGULFING
+CADCHF: PUT (65%) - WIN | RSI overbought (86.0) | Strong uptrend | Pattern: BEARISH_ENGULFING
+USDCAD: CALL (65%) - WIN | Pattern: MORNING_STAR | Price near support
+USDCAD: CALL (65%) - WIN | Pattern: MORNING_STAR | Price near support
+USDCAD: CALL (65%) - WIN | RSI oversold (22.9) | Strong downtrend | Pattern: MORNING_STAR
+USDCAD: CALL (65%) - WIN | RSI oversold (26.0) | Strong downtrend | Pattern: MORNING_STAR
+USDCAD: PUT (65%) - LOSS | RSI overbought (76.8) | Strong uptrend | Pattern: BEARISH_ENGULFING
+USDCAD: PUT (65%) - WIN | RSI overbought (72.2) | Strong uptrend | Pattern: EVENING_STAR
+USDCAD: CALL (65%) - WIN | RSI oversold (29.2) | Price near support
+BTCUSD: PUT (65%) - WIN | RSI overbought (72.6) | Strong uptrend | Pattern: BEARISH_ENGULFING
+BTCUSD: PUT (65%) - WIN | Pattern: EVENING_STAR | Price near resistance
+BTCUSD: PUT (65%) - WIN | RSI overbought (70.7) | Price near resistance
+BTCUSD: CALL (65%) - LOSS | RSI oversold (25.7) | Strong downtrend | Pattern: MORNING_STAR
+BTCUSD: PUT (65%) - LOSS | RSI overbought (70.6) | Strong uptrend | Pattern: EVENING_STAR
+BA: PUT (65%) - WIN | RSI overbought (71.3) | Strong uptrend | Pattern: BEARISH_ENGULFING
+BA: PUT (65%) - WIN | RSI overbought (73.3) | Strong uptrend | Pattern: BEARISH_ENGULFING
+AXP: CALL (65%) - LOSS | RSI oversold (24.3) | Strong downtrend | Pattern: MORNING_STAR
+AXP: CALL (65%) - LOSS | Pattern: MORNING_STAR | Price near support
+AXP: CALL (65%) - LOSS | Pattern: MORNING_STAR | Price near support
+AXP: CALL (65%) - WIN | RSI oversold (13.0) | Strong downtrend | Pattern: MORNING_STAR
+AXP: CALL (65%) - WIN | RSI oversold (19.9) | Strong downtrend | Pattern: BULLISH_ENGULFING
+AXP: PUT (65%) - WIN | RSI overbought (72.2) | Strong uptrend | Pattern: BEARISH_ENGULFING
+AXP: PUT (65%) - WIN | RSI overbought (71.8) | Price near resistance
+AXP: PUT (65%) - WIN | Pattern: BEARISH_ENGULFING | Price near resistance
+AXP: PUT (65%) - WIN | RSI overbought (74.4) | Strong uptrend | Pattern: EVENING_STAR
+MCD: CALL (65%) - LOSS | RSI oversold (23.9) | Price near support
+MCD: CALL (65%) - LOSS | Pattern: MORNING_STAR | Price near support
+MCD: PUT (65%) - WIN | RSI overbought (79.5) | Strong uptrend | Pattern: BEARISH_ENGULFING
+MCD: CALL (65%) - LOSS | RSI oversold (22.7) | Strong downtrend | Pattern: MORNING_STAR
+MCD: PUT (65%) - LOSS | RSI overbought (71.4) | Strong uptrend | Pattern: BEARISH_ENGULFING
+MCD: CALL (65%) - WIN | Pattern: MORNING_STAR | Price near support
+INTC: CALL (70%) - LOSS | RSI oversold (29.6) | Pattern: MORNING_STAR
+MSFT: CALL (65%) - LOSS | Pattern: MORNING_STAR | Price near support
+JNJ: CALL (65%) - WIN | RSI oversold (26.1) | Strong downtrend | Pattern: MORNING_STAR
+JNJ: CALL (65%) - WIN | RSI oversold (20.8) | Strong downtrend | Pattern: MORNING_STAR
+JNJ: CALL (65%) - WIN | RSI oversold (26.7) | Strong downtrend | Pattern: BULLISH_ENGULFING
+JNJ: PUT (65%) - LOSS | RSI overbought (71.8) | Price near resistance
+JNJ: CALL (65%) - WIN | RSI oversold (26.7) | Strong downtrend | Pattern: MORNING_STAR
+JNJ: PUT (65%) - LOSS | RSI overbought (74.0) | Strong uptrend | Pattern: BEARISH_ENGULFING
+JNJ: PUT (65%) - LOSS | RSI overbought (70.6) | Price near resistance

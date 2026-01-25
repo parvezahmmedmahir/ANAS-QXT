@@ -1,0 +1,3 @@
+SNIPER MODE RESULTS
+Accuracy: 70.70%
+Signals: 273

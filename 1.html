@@ -1,0 +1,1635 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>QUANTUM X PRO</title>
+
+  <!-- Premium Font -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Roboto+Mono:wght@300;400&display=swap"
+    rel="stylesheet">
+
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+
+  <!-- Vanta JS Dependencies -->
+  <!-- Three.js (Module) will be imported in the script -->
+
+
+  <style>
+    :root {
+      --color-void: #000000;
+      --color-light: #ffffff;
+      --color-dim: #444444;
+      --color-glass: rgba(255, 255, 255, 0.05);
+      --border-glass: rgba(255, 255, 255, 0.15);
+      --font-display: 'Orbitron', sans-serif;
+      --font-tech: 'Roboto Mono', monospace;
+
+      --primary-a: #ffffff;
+      --primary-b: #e2e2e2;
+      --accent-green: #22c55e;
+      --accent-red: #ef4444;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      height: 100%;
+      width: 100%;
+      margin: 0;
+      padding: 0;
+      background-color: var(--color-void);
+      color: var(--color-light);
+      font-family: var(--font-tech);
+      overflow-x: hidden;
+      overflow-y: auto;
+    }
+
+    /* 3D Background Canvas */
+    #canvas-container {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: -1;
+      pointer-events: none;
+    }
+
+    /* Layout */
+    .app-wrapper {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      padding-top: 60px;
+      /* Space for Ticker */
+    }
+
+    /* Utility */
+    .hidden {
+      display: none !important;
+    }
+
+    .w-full {
+      width: 100%;
+    }
+
+    /* Market Ticker */
+    .ticker-wrap {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 50px;
+      background: rgba(0, 0, 0, 0.8);
+      border-bottom: 1px solid var(--border-glass);
+      overflow: hidden;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      backdrop-filter: blur(5px);
+    }
+
+    .ticker {
+      display: flex;
+      animation: ticker-slide 40s linear infinite;
+      white-space: nowrap;
+    }
+
+    .ticker-item {
+      display: flex;
+      align-items: center;
+      padding: 0 20px;
+      font-size: 0.8rem;
+      font-family: var(--font-tech);
+      color: #aaa;
+      transition: opacity 0.3s ease;
+    }
+
+    .ticker-item span {
+      margin-left: 8px;
+      transition: color 0.2s ease;
+    }
+
+    .up {
+      color: var(--accent-green);
+    }
+
+    .down {
+      color: var(--accent-red);
+    }
+
+    @keyframes ticker-slide {
+      0% {
+        transform: translateX(0);
+      }
+
+      100% {
+        transform: translateX(-50%);
+      }
+    }
+
+    /* Typography */
+    .page-header {
+      text-align: center;
+      margin: 40px 0;
+      margin-top: 80px;
+    }
+
+    .headline {
+      font-family: var(--font-display);
+      font-size: clamp(2rem, 5vw, 4rem);
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: 4px;
+      color: var(--color-light);
+      text-shadow: 0 0 20px rgba(255, 255, 255, 0.3);
+      mix-blend-mode: difference;
+      white-space: nowrap;
+    }
+
+    /* Components */
+    .gate-wrap,
+    .app-wrap {
+      width: 100%;
+      max-width: 480px;
+      padding: 20px;
+    }
+
+    .card {
+      background: rgba(0, 0, 0, 0.6);
+      border: 1px solid var(--border-glass);
+      backdrop-filter: blur(10px);
+      padding: 30px;
+      /* Sharp edges for industrial look */
+      border-radius: 4px;
+      box-shadow: 0 0 30px rgba(0, 0, 0, 0.8);
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* Form Section Specific Padding */
+    #form-section {
+      padding-left: 80px;
+      padding-right: 80px;
+    }
+
+    /* Scanline effect on cards */
+    .card::after {
+      content: " ";
+      display: block;
+      position: absolute;
+      top: 0;
+      left: 0;
+      bottom: 0;
+      right: 0;
+      background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+      z-index: 2;
+      background-size: 100% 2px, 3px 100%;
+      pointer-events: none;
+    }
+
+    .input-group {
+      margin-bottom: 20px;
+    }
+
+    .input-label {
+      color: #aaa;
+      font-size: 0.7rem;
+      font-weight: 700;
+      margin-bottom: 8px;
+      display: block;
+      letter-spacing: 1px;
+      font-family: var(--font-display);
+    }
+
+    .input {
+      width: 100%;
+      padding: 14px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border-glass);
+      color: #fff;
+      font-family: var(--font-tech);
+      font-size: 1rem;
+      outline: none;
+      border-radius: 2px;
+      transition: all 0.3s;
+    }
+
+    .input:focus {
+      border-color: var(--color-light);
+      background: rgba(255, 255, 255, 0.1);
+      box-shadow: 0 0 15px rgba(255, 255, 255, 0.1);
+    }
+
+    /* Buttons */
+    .btn {
+      width: 100%;
+      padding: 16px;
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid var(--border-glass);
+      color: #fff;
+      cursor: pointer;
+      font-family: var(--font-display);
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      transition: all 0.3s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      border-radius: 2px;
+      position: relative;
+      overflow: hidden;
+      z-index: 5;
+    }
+
+    .btn:hover {
+      background: #fff;
+      color: #000;
+      box-shadow: 0 0 20px rgba(255, 255, 255, 0.4);
+    }
+
+    /* Result Card Specifics */
+    .result-card {
+      text-align: center;
+    }
+
+    .result-value {
+      font-size: 3rem;
+      font-family: var(--font-display);
+      font-weight: 900;
+      margin: 10px 0;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 4px 12px;
+      border: 1px solid;
+      font-size: 0.7rem;
+      font-family: var(--font-tech);
+      letter-spacing: 1px;
+    }
+
+    .detail-grid {
+      display: grid;
+      gap: 10px;
+      margin-top: 20px;
+      text-align: left;
+    }
+
+    .detail-row {
+      display: flex;
+      justify-content: space-between;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      padding: 8px 0;
+    }
+
+    .detail-label {
+      font-size: 0.7rem;
+      color: #888;
+      text-transform: uppercase;
+    }
+
+    .detail-val {
+      font-family: var(--font-tech);
+      font-weight: 700;
+      color: #fff;
+    }
+
+    /* Custom Dropdown Styles (kept functional but restyled) */
+    .custom-trigger {
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .custom-menu {
+      position: absolute;
+      top: 105%;
+      left: 0;
+      width: 100%;
+      background: #0a0a0a;
+      border: 1px solid var(--border-glass);
+      z-index: 100;
+      padding: 10px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.9);
+    }
+
+    .asset-category {
+      font-size: 0.65rem;
+      color: #888;
+      font-weight: 800;
+      text-transform: uppercase;
+      margin: 12px 0 8px;
+      letter-spacing: 1.5px;
+      padding-bottom: 4px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      font-family: var(--font-display);
+    }
+
+    .asset-item {
+      padding: 10px;
+      cursor: pointer;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .asset-item:hover {
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .asset-tag {
+      margin-left: auto;
+      font-size: 0.65rem;
+      padding: 3px 8px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 4px;
+      font-weight: 700;
+      color: #cbd5e1;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .otc-tag {
+      background: rgba(245, 158, 11, 0.2);
+      color: #fbbf24;
+      border: 1px solid rgba(245, 158, 11, 0.3);
+    }
+
+    .real-tag-open {
+      background: rgba(34, 197, 94, 0.2);
+      color: #22c55e;
+      border: 1px solid rgba(34, 197, 94, 0.3);
+    }
+
+    .real-tag-closed {
+      background: rgba(239, 68, 68, 0.2);
+      color: #ef4444;
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      opacity: 0.7;
+    }
+
+    .asset-item.closed {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .asset-item.closed:hover {
+      background: rgba(239, 68, 68, 0.1);
+    }
+
+    .lock-icon {
+      font-size: 0.6rem;
+    }
+
+    /* Loading Screen */
+    #loading-screen {
+      position: fixed;
+      inset: 0;
+      background: #000;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+    }
+
+    .loader-ring {
+      width: 60px;
+      height: 60px;
+      border: 4px solid rgba(255, 255, 255, 0.1);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    .error-msg {
+      color: var(--accent-red);
+      font-size: 0.8rem;
+      margin-top: 10px;
+      min-height: 20px;
+      font-weight: 700;
+    }
+  </style>
+</head>
+
+<body>
+  <!-- Ticker System -->
+  <div class="ticker-wrap">
+    <div class="ticker" id="live-ticker">
+      <!-- Doubled items for seamless loop -->
+      <div class="ticker-item" data-pair="EUR/USD" data-base="1.0842" data-decimals="4">EUR/USD <span class="up">▲
+          1.0842</span></div>
+      <div class="ticker-item" data-pair="GBP/USD" data-base="1.2540" data-decimals="4">GBP/USD <span class="down">▼
+          1.2540</span></div>
+      <div class="ticker-item" data-pair="USD/JPY" data-base="145.20" data-decimals="2">USD/JPY <span class="up">▲
+          145.20</span></div>
+      <div class="ticker-item" data-pair="AUD/USD" data-base="0.6550" data-decimals="4">AUD/USD <span class="down">▼
+          0.6550</span></div>
+      <div class="ticker-item" data-pair="BTC/USD" data-base="64230" data-decimals="0">BTC/USD <span class="up">▲
+          64,230</span></div>
+      <div class="ticker-item" data-pair="ETH/USD" data-base="3450" data-decimals="0">ETH/USD <span class="down">▼
+          3,450</span></div>
+      <div class="ticker-item" data-pair="XAU/USD" data-base="2340.50" data-decimals="2">XAU/USD <span class="up">▲
+          2,340.50</span></div>
+      <!-- Repeat -->
+      <div class="ticker-item" data-pair="EUR/USD" data-base="1.0842" data-decimals="4">EUR/USD <span class="up">▲
+          1.0842</span></div>
+      <div class="ticker-item" data-pair="GBP/USD" data-base="1.2540" data-decimals="4">GBP/USD <span class="down">▼
+          1.2540</span></div>
+      <div class="ticker-item" data-pair="USD/JPY" data-base="145.20" data-decimals="2">USD/JPY <span class="up">▲
+          145.20</span></div>
+      <div class="ticker-item" data-pair="AUD/USD" data-base="0.6550" data-decimals="4">AUD/USD <span class="down">▼
+          0.6550</span></div>
+      <div class="ticker-item" data-pair="BTC/USD" data-base="64230" data-decimals="0">BTC/USD <span class="up">▲
+          64,230</span></div>
+      <div class="ticker-item" data-pair="ETH/USD" data-base="3450" data-decimals="0">ETH/USD <span class="down">▼
+          3,450</span></div>
+      <div class="ticker-item" data-pair="XAU/USD" data-base="2340.50" data-decimals="2">XAU/USD <span class="up">▲
+          2,340.50</span></div>
+    </div>
+  </div>
+
+  <!-- Background -->
+  <div id="canvas-container"></div>
+
+  <!-- Loading Screen -->
+  <div id="loading-screen">
+    <div class="loader-ring"></div>
+    <div id="loading-text" style="margin-top:20px; letter-spacing:3px; font-size:0.9rem;">INITIALIZING SYSTEM...</div>
+  </div>
+
+  <div class="app-wrapper">
+    <div class="page-header">
+      <div class="headline">QUANTUM X PRO</div>
+    </div>
+
+    <!-- License Section -->
+    <div id="license-gate" class="gate-wrap">
+      <div class="card">
+        <h3 style="margin:0 0 5px; color:#cbd5e1; font-weight:600; letter-spacing:1px;">SYSTEM AUTHORIZATION</h3>
+        <div id="system-status-indicator"
+          style="font-size: 0.6rem; color: #666; margin-bottom: 20px; letter-spacing: 1px;">
+          <i class="fa-solid fa-circle-dot" style="font-size: 0.5rem; margin-right: 4px;"></i> SYSTEM: SYNCING...
+        </div>
+
+        <div class="input-group">
+          <label class="input-label">LICENSE KEY</label>
+          <input id="license-key" type="password" placeholder="Enter key to unlock" class="input" />
+        </div>
+
+        <button id="unlock-btn" class="btn btn-primary">
+          <i class="fa-solid fa-unlock-keyhole"></i> ACCESS TERMINAL
+        </button>
+
+        <div id="license-error" class="error-msg"></div>
+
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:24px;">
+          <button class="btn btn-glossy" onclick="animateAndOpen('https://t.me/the_smart_chart', this)">
+            <i class="fab fa-telegram" style="color:#0088cc; font-size:1.2rem;"></i> JOIN TELEGRAM
+          </button>
+          <button class="btn btn-glossy" onclick="animateAndOpen('https://youtube.com/@the_smart_chart', this)">
+            <i class="fab fa-youtube" style="color:#ff0000; font-size:1.2rem;"></i> WATCH TUTORIAL
+          </button>
+        </div>
+
+        <!-- Hiring Feature -->
+        <!-- Hiring Feature Removed -->
+      </div>
+    </div>
+
+    <!-- Security & Licensing Logic -->
+    <script src="https://cdn.jsdelivr.net/npm/@fingerprintjs/fingerprintjs@3/dist/fp.min.js"></script>
+    <script>
+      // --- BUTTON ANIMATION LOGIC ---
+      window.animateAndOpen = function (url, btn) {
+        btn.classList.add('click-anim');
+        setTimeout(() => {
+          btn.classList.remove('click-anim');
+          window.open(url, '_blank');
+        }, 500); // 500ms delay for animation
+      };
+
+      // --- 1. ENHANCED SECURITY LAYERS (PRODUCTION DEPLOYMENT) ---
+      (function () {
+        // Domain validation - prevent unauthorized hosting
+        // ⚠️ IMPORTANT: Update this list with your actual domain before deployment!
+        const ALLOWED_DOMAINS = ['localhost', '127.0.0.1', 'quantumxpro.com', 'yourdomain.com', 'onrender.com']; // Add your production domain here
+        const currentDomain = window.location.hostname;
+        const isAllowed = ALLOWED_DOMAINS.some(domain => currentDomain.includes(domain)) ||
+          window.location.protocol === 'file:';
+
+        if (!isAllowed) {
+          document.body.innerHTML = '<div style="color:red; text-align:center; padding:50px; font-family:monospace;"><h1>UNAUTHORIZED ACCESS</h1><p>This system is protected. Unauthorized copying is prohibited.</p></div>';
+          throw new Error('Unauthorized domain');
+        }
+
+        // Enhanced DevTools Detection
+        const devTools = () => {
+          const widthThreshold = window.outerWidth - window.innerWidth > 160;
+          const heightThreshold = window.outerHeight - window.innerHeight > 160;
+          const devtools = { open: false };
+
+          const checkDevTools = () => {
+            if (widthThreshold || heightThreshold) {
+              if (!devtools.open) {
+                devtools.open = true;
+                document.body.innerHTML = '<div style="color:red; text-align:center; padding:50px;"><h1>SECURITY VIOLATION</h1><p>Developer Tools Detected. Access Denied.</p></div>';
+              }
+            }
+          };
+
+          setInterval(checkDevTools, 1000);
+        };
+
+        devTools();
+
+        // Enhanced Keyboard Blocking
+        document.addEventListener('contextmenu', e => e.preventDefault());
+        document.addEventListener('keydown', e => {
+          if (
+            e.key === 'F12' ||
+            (e.ctrlKey && e.shiftKey && (e.key === 'I' || e.key === 'J' || e.key === 'C')) ||
+            (e.ctrlKey && (e.key === 'U' || e.key === 'S' || e.key === 'P' || e.key === 'p')) ||
+            (e.key === 'F5' && e.ctrlKey) ||
+            (e.key === 'F11')
+          ) {
+            e.preventDefault();
+            e.stopPropagation();
+            return false;
+          }
+        }, true);
+
+        document.addEventListener('selectstart', e => e.preventDefault());
+        document.addEventListener('dragstart', e => e.preventDefault());
+        document.addEventListener('copy', e => {
+          e.preventDefault();
+          e.clipboardData.setData('text/plain', 'Copying is disabled. This is a protected system.');
+          return false;
+        });
+
+        document.addEventListener('mousedown', e => {
+          if (e.button === 2) {
+            e.preventDefault();
+            return false;
+          }
+        });
+
+        // Integrity check
+        const codeHash = 'QUANTUM_X_PRO_V4';
+        if (typeof window.QUANTUM_INTEGRITY === 'undefined') {
+          window.QUANTUM_INTEGRITY = codeHash;
+        } else if (window.QUANTUM_INTEGRITY !== codeHash) {
+          document.body.innerHTML = '<div style="color:red; text-align:center; padding:50px;"><h1>INTEGRITY VIOLATION</h1><p>Code has been modified. Access denied.</p></div>';
+        }
+
+        // Watermarking
+        const watermark = document.createElement('div');
+        watermark.style.cssText = 'position:fixed;bottom:0;right:0;opacity:0.01;pointer-events:none;font-size:1px;color:transparent;';
+        watermark.textContent = 'QUANTUM_X_PRO_V4_' + currentDomain + '_' + Date.now();
+        document.body.appendChild(watermark);
+
+        // Anti-debugging
+        let start = performance.now();
+        debugger;
+        let end = performance.now();
+        if (end - start > 100) {
+          document.body.innerHTML = '<div style="color:red; text-align:center; padding:50px;"><h1>DEBUGGER DETECTED</h1><p>Debugging tools are not allowed.</p></div>';
+        }
+
+        console.log("%c STOP! ", "color: red; font-size: 50px; font-weight: bold; background: black; text-shadow: 0 0 5px red;");
+        console.log("%c This is a protected system. Any attempt to reverse engineer will be logged.", "color: white; font-size: 16px;");
+
+        setInterval(() => {
+          if (console.clear) {
+            try { console.clear(); } catch (e) { }
+          }
+        }, 5000);
+      })();
+
+      // --- 2. LICENSE VALIDATION (ENHANCED) ---
+      const unlockBtn = document.getElementById('unlock-btn');
+      const licenseInput = document.getElementById('license-key');
+      const errMsg = document.getElementById('license-error');
+      const gate = document.getElementById('license-gate');
+      const appContainer = document.getElementById('app-container');
+
+      // Hardware & License Sync
+      const savedKey = localStorage.getItem('QUANTUM_LICENSE_KEY');
+      if (savedKey) {
+        verifyLicense(savedKey, true); // True = silent/auto mode
+      } else {
+        // Attempt Zero-Click Hardware Login
+        syncDeviceHardware();
+      }
+
+      // Background System Check
+      checkSystemDB();
+
+      async function syncDeviceHardware() {
+        try {
+          const deviceId = await getFingerprint();
+          const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+          const API_BASE = isLocal ? 'http://localhost:5000' : window.location.origin;
+
+          const response = await fetch(`${API_BASE}/api/check_device_sync`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ device_id: deviceId })
+          });
+
+          const data = await response.json();
+          if (data.valid && data.key) {
+            console.log("[AUTO-SYNC] Recognized Hardware. Re-establishing connection.");
+            verifyLicense(data.key, true);
+          }
+        } catch (e) {
+          console.warn("Device sync failed:", e);
+        }
+      }
+
+      async function checkSystemDB() {
+        try {
+          const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+          const API_BASE = isLocal ? 'http://localhost:5000' : window.location.origin;
+          const statusEl = document.getElementById('system-status-indicator');
+
+          const resp = await fetch(`${API_BASE}/test`);
+          const data = await resp.json();
+
+          if (data.db_mode === 'postgres') {
+            statusEl.innerHTML = '<i class="fa-solid fa-circle-dot" style="color:#22c55e;"></i> CLOUD GRID: CONNECTED';
+            statusEl.style.color = '#22c55e';
+          } else {
+            statusEl.innerHTML = '<i class="fa-solid fa-triangle-exclamation" style="color:#fbbf24;"></i> LOCAL MODE: DB_URL MISSING';
+            statusEl.style.color = '#fbbf24';
+          }
+        } catch (e) {
+          console.warn("System check failed:", e);
+        }
+      }
+
+      async function getFingerprint() {
+        const fpPromise = FingerprintJS.load();
+        const fp = await fpPromise;
+        const result = await fp.get();
+        return result.visitorId;
+      }
+
+      async function verifyLicense(key, isAuto = false) {
+        if (!key) {
+          if (!isAuto) errMsg.innerText = "Please enter a valid license key.";
+          return;
+        }
+
+        if (!isAuto) {
+          unlockBtn.innerHTML = '<i class="fa-solid fa-microchip fa-fade"></i> SCANNING HARDWARE...';
+          errMsg.innerText = "Authenticating Drive Signature...";
+          errMsg.style.color = '#60a5fa'; // Blue for process
+        } else {
+          // For auto-login, show loading screen immediately
+          document.getElementById('loading-screen').style.display = 'flex';
+          document.getElementById('loading-text').innerText = "VERIFYING SECURE DRIVE...";
+          gate.classList.add('hidden');
+        }
+
+        try {
+          const deviceId = await getFingerprint();
+
+          // Universal API Logic
+          const isLocal = window.location.hostname === 'localhost' ||
+            window.location.hostname === '127.0.0.1' ||
+            window.location.protocol === 'file:';
+
+          const API_BASE = isLocal ? 'http://localhost:5000' : window.location.origin;
+
+          const response = await fetch(`${API_BASE}/api/validate_license`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ key: key, device_id: deviceId })
+          });
+
+          window.lastServerResponse = response.status + " " + response.statusText;
+          if (!response.ok) {
+            const errorText = await response.text();
+            console.error("Server Error Response:", errorText);
+            throw new Error(`Server ${response.status}: ${errorText || response.statusText}`);
+          }
+
+          const data = await response.json();
+
+          if (data.valid) {
+            // Success
+            localStorage.setItem('QUANTUM_LICENSE_KEY', key); // REMEMBER SYSTEM
+
+            if (!isAuto) {
+              unlockBtn.innerHTML = '<i class="fa-solid fa-check"></i> ACCESS GRANTED';
+              unlockBtn.style.background = '#22c55e';
+              errMsg.innerText = data.message;
+              errMsg.style.color = '#22c55e';
+            }
+
+            // Transition
+            setTimeout(() => {
+              gate.classList.add('hidden');
+              const loader = document.getElementById('loading-screen');
+              loader.style.display = 'flex';
+              document.getElementById('loading-text').innerText = "SYNCING WITH DRIVE..."; // Powerful phrase
+
+              setTimeout(() => {
+                loader.style.display = 'none';
+                appContainer.classList.remove('hidden');
+                window.dispatchEvent(new Event('resize'));
+              }, 2000);
+            }, isAuto ? 500 : 1500);
+
+            console.log(`[ACCESS] ${data.category} License Validated. Drive: ${deviceId}`);
+
+          } else {
+            // Fail
+            localStorage.removeItem('QUANTUM_LICENSE_KEY'); // Clear invalid key
+
+            if (isAuto) {
+              // If auto failed, show gate again
+              gate.classList.remove('hidden');
+              document.getElementById('loading-screen').style.display = 'none';
+              errMsg.innerText = "Session Expired. Please Re-Enter Key.";
+              errMsg.style.color = '#f87171';
+            } else {
+              unlockBtn.innerHTML = '<i class="fa-solid fa-xmark"></i> ACCESS DENIED';
+              unlockBtn.style.background = '#ef4444';
+              errMsg.innerText = data.message || "Invalid or Expired Key";
+              errMsg.style.color = '#f87171';
+
+              setTimeout(() => {
+                unlockBtn.innerHTML = '<i class="fa-solid fa-unlock-keyhole"></i> ACCESS TERMINAL';
+                unlockBtn.style.background = ''; // reset
+              }, 3000);
+            }
+          }
+
+        } catch (err) {
+          console.error("License Verification Error:", err);
+
+          let displayError = "Connection Error to Secure Server.";
+
+          if (err.message.includes("FingerprintJS")) {
+            displayError = "Security Module Failed to Load. Check Internet.";
+          } else if (err.message.includes("Failed to fetch")) {
+            if (window.location.protocol === 'file:') {
+              displayError = "Local Connection Failed. Is app.py running?";
+            } else {
+              displayError = "Server Unreachable. Check Connection.";
+            }
+          } else if (window.lastServerResponse) {
+            // If we got a response but JSON parsing failed
+            displayError = "Server Error: " + window.lastServerResponse;
+          } else if (err.message) {
+            displayError = "Error: " + err.message;
+          }
+
+          if (isAuto) {
+            gate.classList.remove('hidden');
+            document.getElementById('loading-screen').style.display = 'none';
+          }
+          errMsg.innerText = displayError;
+          unlockBtn.innerHTML = '<i class="fa-solid fa-tower-broadcast"></i> RETRY';
+        }
+      }
+
+      unlockBtn.addEventListener('click', () => {
+        const key = licenseInput.value.trim();
+        verifyLicense(key, false);
+      });
+
+    </script>
+
+    <!-- App Wrapper: CENTERED -->
+    <div id="app-container" class="app-wrap hidden">
+
+      <!-- Config Form -->
+      <div id="form-section" class="card">
+        <!-- Broker Logo Display -->
+        <div
+          style="display:flex; align-items:center; gap:12px; margin-bottom:15px; padding:10px; background:rgba(0,0,0,0.3); border-radius:10px; border:1px solid rgba(255,255,255,0.05);">
+          <img id="broker-logo" src="LOGO/quotex.svg" alt="Broker Logo"
+            style="width:40px; height:40px; object-fit:contain; transition: all 0.3s ease;">
+          <div>
+            <div id="broker-name" style="font-size:0.85rem; font-weight:700; color:#60a5fa;">QUOTEX OFFICIAL</div>
+            <div style="font-size:0.65rem; color:#94a3b8;">Selected Broker</div>
+          </div>
+        </div>
+
+        <h3 style="margin:0 0 20px; color:#fff; font-weight:700;">SIGNAL CONFIGURATION</h3>
+
+        <div class="input-group">
+          <label class="input-label">BROKER </label>
+          <select id="broker" class="input">
+            <option value="QUOTEX">QUOTEX </option>
+            <option value="BINOLLA">BINOLLA </option>
+            <option value="POCKETOPTION">POCKET OPTION </option>
+            <option value="IQ OPTION">IQ OPTION </option>
+          </select>
+        </div>
+
+        <!-- CUSTOM ASSET SELECTION -->
+        <div class="input-group" style="position:relative; z-index:50;">
+          <label class="input-label">ASSET / MARKET</label>
+
+          <!-- Trigger -->
+          <div id="custom-market-trigger" class="input custom-trigger">
+            <span id="selected-asset-display">
+              <i class="fa-solid fa-chart-line" style="color:#3b82f6; margin-right:8px;"></i> EUR/USD
+            </span>
+            <i class="fa-solid fa-caret-down" style="color:#64748b;"></i>
+          </div>
+
+          <input type="hidden" id="market" value="EUR/USD">
+
+          <!-- Dropdown Menu -->
+          <div id="custom-market-menu" class="custom-menu hidden">
+            <div class="search-box">
+              <i class="fa-solid fa-magnifying-glass"></i>
+              <input type="text" id="asset-search" placeholder="Type to search..." autocomplete="off">
+            </div>
+            <div class="asset-list-scroll" id="asset-list">
+              <!-- Populated via JS -->
+            </div>
+          </div>
+        </div>
+
+        <div class="input-group">
+          <label class="input-label">TIMEFRAME</label>
+          <select id="timeframe" class="input">
+            <option value="M1">1 MINUTE (TURBO)</option>
+            <option value="M5">5 MINUTES</option>
+          </select>
+        </div>
+
+        <button id="generate-btn" class="btn btn-primary" style="margin-top:10px;">
+          <i class="fa-solid fa-satellite-dish"></i> CONNECT & ANALYZE
+        </button>
+      </div>
+
+      <!-- Result View -->
+      <div id="signal-display" class="hidden" style="width:100%;">
+        <div class="result-card">
+          <h4 style="margin:0; color:#94a3b8; font-size:0.8rem; letter-spacing:2px;">AI PREDICTION RESULT</h4>
+
+          <div class="arrow-container">
+            <i id="signal-icon" class="fa-solid fa-circle-arrow-up" style="font-size: 5rem; color: #22c55e;"></i>
+          </div>
+
+          <div id="direction-text" class="result-value" style="color:#22c55e;">CALL</div>
+          <span id="confidence-badge" class="badge" style="color:#22c55e; border:1px solid #22c55e;">CONFIDENCE:
+            98%</span>
+
+          <div class="detail-grid">
+            <div class="detail-row">
+              <span class="detail-label">Entry Time (BD)</span>
+              <span id="entry-time" class="detail-val" style="color:#fbbf24;">14:30</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">Asset</span>
+              <span id="res-asset" class="detail-val">EUR/USD</span>
+            </div>
+            <div class="detail-row">
+              <span class="detail-label">Broker</span>
+              <span id="res-broker" class="detail-val">QUOTEX</span>
+            </div>
+          </div>
+
+          <button id="reset-btn" class="btn btn-glass" style="margin-top:20px; width:100%;">
+            <i class="fa-solid fa-rotate-left"></i> NEW ANALYSIS
+          </button>
+        </div>
+      </div>
+
+    </div>
+    <!-- End App Wrapper -->
+
+    <script>
+      /* 0. LIVE PRICE TICKER SYSTEM */
+      document.addEventListener("DOMContentLoaded", () => {
+        initLiveTicker(); // Initialize live price updates
+        initAssetPicker(); // Initialize the asset picker
+      });
+
+      function initLiveTicker() {
+        const tickerItems = document.querySelectorAll('.ticker-item');
+        const priceData = new Map();
+
+        // Initialize price data for each pair
+        tickerItems.forEach(item => {
+          const pair = item.getAttribute('data-pair');
+          const basePrice = parseFloat(item.getAttribute('data-base'));
+          const decimals = parseInt(item.getAttribute('data-decimals'));
+
+          if (!priceData.has(pair)) {
+            priceData.set(pair, {
+              currentPrice: basePrice,
+              decimals: decimals,
+              trend: Math.random() > 0.5 ? 1 : -1 // Random initial trend
+            });
+          }
+        });
+
+        // Update prices every 1-3 seconds (randomized for realism)
+        function updatePrices() {
+          tickerItems.forEach(item => {
+            const pair = item.getAttribute('data-pair');
+            const data = priceData.get(pair);
+            if (!data) return;
+
+            // Calculate volatility based on asset type
+            let volatility;
+            if (pair.includes('BTC') || pair.includes('ETH')) {
+              volatility = 0.02; // 2% for crypto (more volatile)
+            } else if (pair.includes('XAU')) {
+              volatility = 0.01; // 1% for gold
+            } else {
+              volatility = 0.001; // 0.1% for forex (less volatile)
+            }
+
+            // Random price change (-volatility to +volatility)
+            const changePercent = (Math.random() * 2 - 1) * volatility;
+            const change = data.currentPrice * changePercent;
+
+            // Update price
+            const newPrice = data.currentPrice + change;
+            data.currentPrice = newPrice;
+
+            // Determine direction
+            const isUp = change >= 0;
+            const span = item.querySelector('span');
+
+            // Format price based on decimals
+            let formattedPrice;
+            if (data.decimals === 0) {
+              formattedPrice = Math.round(newPrice).toLocaleString();
+            } else {
+              formattedPrice = newPrice.toFixed(data.decimals);
+              // Add thousand separators for larger numbers
+              const parts = formattedPrice.split('.');
+              parts[0] = parseInt(parts[0]).toLocaleString();
+              formattedPrice = parts.join('.');
+            }
+
+            // Update display
+            span.textContent = `${isUp ? '▲' : '▼'} ${formattedPrice}`;
+            span.className = isUp ? 'up' : 'down';
+
+            // Add flash effect on change
+            item.style.transition = 'none';
+            item.style.opacity = '0.7';
+            setTimeout(() => {
+              item.style.transition = 'opacity 0.3s ease';
+              item.style.opacity = '1';
+            }, 50);
+          });
+
+          // Schedule next update with random delay (1-3 seconds)
+          const nextUpdate = 1000 + Math.random() * 2000;
+          setTimeout(updatePrices, nextUpdate);
+        }
+
+        // Start updates after initial delay
+        setTimeout(updatePrices, 500);
+      }
+
+
+      /* 2. DEVICE DETECTION & ASSET CONFIGURATION */
+
+      // Detect device type
+      const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+      const isTablet = /(tablet|ipad|playbook|silk)|(android(?!.*mobi))/i.test(navigator.userAgent);
+      const deviceType = isMobile ? 'mobile' : (isTablet ? 'tablet' : 'desktop');
+
+      console.log(`[DEVICE] Running on: ${deviceType}`);
+
+      // Market Open/Close Detection Function
+      function isForexMarketOpen() {
+        const now = new Date();
+        const day = now.getDay(); // 0 = Sunday, 6 = Saturday
+        const hour = now.getUTCHours();
+        const minute = now.getUTCMinutes();
+        const currentTime = hour * 60 + minute; // Time in minutes from midnight UTC
+        const marketOpenTime = 22 * 60; // 22:00 UTC = 1320 minutes
+
+        // Saturday - market is always closed
+        if (day === 6) {
+          return false;
+        }
+
+        // Sunday - market opens at 22:00 UTC
+        if (day === 0) {
+          return currentTime >= marketOpenTime;
+        }
+
+        // Friday - market closes at 22:00 UTC
+        if (day === 5) {
+          return currentTime < marketOpenTime;
+        }
+
+        // Monday through Thursday - market is always open
+        return true;
+      }
+
+      // Complete Assets List
+      const ASSETS = [
+        {
+          cat: "Currencies",
+          items: [
+            "AUD/NZD (OTC)",
+            "USD/BRL (OTC)",
+            "USD/EGP (OTC)",
+            "USD/ZAR (OTC)",
+            "EUR/SGD (OTC)",
+            "USD/COP (OTC)",
+            "USD/INR (OTC)",
+            "USD/JPY",
+            "EUR/JPY",
+            "USD/ARS (OTC)",
+            "USD/IDR (OTC)",
+            "AUD/JPY",
+            "USD/MXN (OTC)",
+            "USD/TRY (OTC)",
+            "AUD/USD",
+            "CAD/JPY",
+            "EUR/GBP",
+            "AUD/CHF",
+            "EUR/USD",
+            "EUR/NZD (OTC)",
+            "NZD/CAD (OTC)",
+            "NZD/CHF (OTC)",
+            "NZD/JPY (OTC)",
+            "USD/BDT (OTC)",
+            "USD/DZD (OTC)",
+            "USD/NGN (OTC)",
+            "USD/PHP (OTC)",
+            "AUD/CAD",
+            "GBP/USD",
+            "CAD/CHF (OTC)",
+            "EUR/AUD",
+            "EUR/CAD",
+            "GBP/AUD",
+            "GBP/CAD",
+            "GBP/NZD (OTC)",
+            "USD/CAD",
+            "CHF/JPY",
+            "USD/CHF",
+            "EUR/CHF",
+            "GBP/JPY",
+            "GBP/CHF",
+            "NZD/USD (OTC)"
+          ]
+        },
+        {
+          cat: "Crypto",
+          items: [
+            "Avalanche (OTC)",
+            "Bitcoin Cash (OTC)",
+            "Gala (OTC)",
+            "Hamster Kombat (OTC)",
+            "Chainlink (OTC)",
+            "Litecoin (OTC)",
+            "Decentraland (OTC)",
+            "Melania Meme (OTC)",
+            "Shiba Inu (OTC)",
+            "Solana (OTC)",
+            "Celestia (OTC)",
+            "Toncoin (OTC)",
+            "Trump (OTC)",
+            "TRON (OTC)",
+            "Ripple (OTC)",
+            "Arbitrum (OTC)",
+            "Cardano (OTC)",
+            "Bitcoin (OTC)",
+            "Dogecoin (OTC)",
+            "Dash (OTC)",
+            "Pepe (OTC)",
+            "Floki (OTC)",
+            "Zcash (OTC)",
+            "Polkadot (OTC)",
+            "Cosmos (OTC)",
+            "Dogwifhat (OTC)",
+            "Aptos (OTC)",
+            "Axie Infinity (OTC)",
+            "Binance Coin (OTC)",
+            "Ethereum (OTC)",
+            "Beam (OTC)",
+            "Bonk (OTC)",
+            "Ethereum Classic (OTC)"
+          ]
+        },
+        {
+          cat: "Commodities",
+          items: [
+            "UKBrent (OTC)",
+            "Gold (OTC)",
+            "USCrude (OTC)",
+            "Silver (OTC)"
+          ]
+        },
+        {
+          cat: "Stocks",
+          items: [
+            "Boeing Company (OTC)",
+            "American Express (OTC)",
+            "McDonald's (OTC)",
+            "Intel (OTC)",
+            "Pfizer Inc (OTC)",
+            "FACEBOOK INC (OTC)",
+            "Microsoft (OTC)",
+            "Johnson & Johnson (OTC)"
+          ]
+        },
+        {
+          cat: "Indices",
+          items: [
+            "NASDAQ 100",
+            "Dow Jones",
+            "IBEX 35",
+            "S&P/ASX 200",
+            "FTSE China A50 Index",
+            "CAC 40",
+            "FTSE 100",
+            "Nikkei 225",
+            "EURO STOXX 50"
+          ]
+        }
+      ];
+
+      function initAssetPicker() {
+        const trigger = document.getElementById('custom-market-trigger');
+        const menu = document.getElementById('custom-market-menu');
+        const list = document.getElementById('asset-list');
+        const hiddenInput = document.getElementById('market');
+        const displaySpan = document.getElementById('selected-asset-display');
+        const searchInput = document.getElementById('asset-search');
+        let isOpen = false;
+
+        // Populate List
+        function renderList(filter = "") {
+          list.innerHTML = "";
+          const marketOpen = isForexMarketOpen();
+
+          ASSETS.forEach(category => {
+            const filteredItems = category.items.filter(item => item.toLowerCase().includes(filter.toLowerCase()));
+            if (filteredItems.length > 0) {
+              const catEl = document.createElement('div');
+              catEl.className = 'asset-category';
+              catEl.textContent = category.cat;
+              list.appendChild(catEl);
+
+              filteredItems.forEach(asset => {
+                const el = document.createElement('div');
+                el.className = 'asset-item';
+                if (asset === hiddenInput.value) el.classList.add('active');
+
+                const isOTC = asset.includes("(OTC)");
+                const isForexAsset = category.cat === "Currencies" && !isOTC;
+
+                // Determine if asset should be disabled (forex assets when market is closed)
+                const isDisabled = isForexAsset && !marketOpen;
+
+                if (isDisabled) {
+                  el.classList.add('closed');
+                }
+
+                // Determine icon
+                let iconClass = 'fa-dollar-sign';
+                if (asset.includes('BTC') || asset.includes('Bitcoin')) iconClass = 'fa-bitcoin-sign';
+                else if (asset.includes('ETH') || asset.includes('Ethereum')) iconClass = 'fa-ethereum';
+                else if (category.cat === 'Crypto') iconClass = 'fa-coins';
+                else if (category.cat === 'Commodities') iconClass = 'fa-gem';
+                else if (category.cat === 'Stocks') iconClass = 'fa-chart-line';
+                else if (category.cat === 'Indices') iconClass = 'fa-chart-area';
+
+                // Determine tag HTML
+                let tagHTML = '';
+                if (isOTC) {
+                  tagHTML = '<span class="asset-tag otc-tag">OTC</span>';
+                } else if (isForexAsset) {
+                  // Forex assets show REAL tag with market status
+                  if (marketOpen) {
+                    tagHTML = '<span class="asset-tag real-tag-open">REAL</span>';
+                  } else {
+                    tagHTML = '<span class="asset-tag real-tag-closed"><i class="fa-solid fa-lock lock-icon"></i> REAL</span>';
+                  }
+                } else {
+                  // Non-forex REAL assets (always available)
+                  tagHTML = '<span class="asset-tag real-tag-open">REAL</span>';
+                }
+
+                el.innerHTML = `
+                <i class="fa-solid ${iconClass}" style="color:${isOTC ? '#fbbf24' : (isDisabled ? '#ef4444' : '#fff')}; opacity:${isDisabled ? '0.5' : '0.7'};"></i>
+                <div>
+                  <div class="asset-name">${asset.replace(' (OTC)', '')}</div>
+                  <div class="asset-desc">${category.cat}</div>
+                </div>
+                ${tagHTML}
+              `;
+
+                el.addEventListener('click', () => {
+                  if (!isDisabled) {
+                    hiddenInput.value = asset;
+                    displaySpan.innerHTML = `<i class="fa-solid fa-chart-line" style="color:#3b82f6; margin-right:8px;"></i> ${asset}`;
+                    toggleMenu();
+                  }
+                });
+
+                list.appendChild(el);
+              });
+            }
+          });
+        }
+
+        // Toggle Logic
+        function toggleMenu() {
+          isOpen = !isOpen;
+          if (isOpen) {
+            menu.classList.remove('hidden');
+            searchInput.focus();
+          } else {
+            menu.classList.add('hidden');
+          }
+        }
+
+        trigger.addEventListener('click', toggleMenu);
+
+        // Search Logic
+        searchInput.addEventListener('input', (e) => {
+          renderList(e.target.value);
+        });
+
+        // Close on Outside Click
+        document.addEventListener('click', (e) => {
+          if (!trigger.contains(e.target) && !menu.contains(e.target)) {
+            if (isOpen) toggleMenu();
+          }
+        });
+
+        // Init
+        renderList();
+
+        // Update market status every minute
+        setInterval(() => {
+          renderList(searchInput.value);
+        }, 60000);
+      }
+
+
+      /* 3. LOGIC & BACKEND CONNECTION */
+      const BACKEND_URL = "http://localhost:5000/predict";
+      const SECRET_KEY = "VFND";
+
+      // Dom & Logic same as before...
+      const dom = {
+        gate: document.getElementById('license-gate'),
+        app: document.getElementById('app-container'),
+        input: document.getElementById('license-key'),
+        unlockBtn: document.getElementById('unlock-btn'),
+        err: document.getElementById('license-error'),
+        loading: document.getElementById('loading-screen'),
+        loadText: document.getElementById('loading-text'),
+        form: document.getElementById('form-section'),
+        result: document.getElementById('signal-display'),
+        generateBtn: document.getElementById('generate-btn'),
+        resetBtn: document.getElementById('reset-btn'),
+        dirText: document.getElementById('direction-text'),
+        icon: document.getElementById('signal-icon'),
+        entryTime: document.getElementById('entry-time'),
+        resAsset: document.getElementById('res-asset'),
+        resBroker: document.getElementById('res-broker'),
+        confBadge: document.getElementById('confidence-badge')
+      };
+
+      function showLoader(msg) { dom.loadText.innerText = msg; dom.loading.style.display = 'flex'; }
+      function hideLoader() { dom.loading.style.display = 'none'; }
+      function showError(msg) { dom.err.innerText = msg; setTimeout(() => dom.err.innerText = '', 3000); }
+
+      dom.unlockBtn.addEventListener('click', () => {
+        const key = dom.input.value.trim();
+        if (btoa(key) === SECRET_KEY) {
+          showLoader('AUTHENTICATING...');
+          setTimeout(() => {
+            hideLoader();
+            dom.gate.classList.add('hidden');
+            dom.app.classList.remove('hidden');
+            dom.app.style.display = 'flex';
+          }, 1500);
+        } else {
+          showError('ACCESS DENIED');
+        }
+      });
+
+      // Broker Logo Mapping
+      const brokerLogos = {
+        'QUOTEX': {
+          logo: 'LOGO/quotex.svg',
+          name: 'QUOTEX OFFICIAL'
+        },
+        'BINOLLA': {
+          logo: 'LOGO/binolla.svg',
+          name: 'BINOLLA API'
+        },
+        'POCKETOPTION': {
+          logo: 'LOGO/pocketoption.svg',
+          name: 'POCKET OPTION PRO'
+        },
+        'IQ OPTION': {
+          logo: 'LOGO/iqoption.svg',
+          name: 'IQ OPTION VIP'
+        }
+      };
+
+      // Update broker logo when selection changes
+      const brokerSelect = document.getElementById('broker');
+      const brokerLogoImg = document.getElementById('broker-logo');
+      const brokerNameText = document.getElementById('broker-name');
+
+      brokerSelect.addEventListener('change', function () {
+        const selectedBroker = this.value;
+        const brokerInfo = brokerLogos[selectedBroker];
+
+        if (brokerInfo) {
+          // Fade out
+          brokerLogoImg.style.opacity = '0';
+
+          setTimeout(() => {
+            // Change logo and name
+            brokerLogoImg.src = brokerInfo.logo;
+            brokerNameText.textContent = brokerInfo.name;
+
+            // Fade in
+            brokerLogoImg.style.opacity = '1';
+          }, 150);
+        }
+      });
+
+      dom.generateBtn.addEventListener('click', async () => {
+        const broker = document.getElementById('broker').value;
+        const market = document.getElementById('market').value; // Uses hidden input from custom picker
+        const timeframe = document.getElementById('timeframe').value;
+
+        showLoader(`ANALYZING ${market}...`);
+
+        try {
+          // Determine Backend URL dynamically
+          // Universal API Logic
+          const isLocal = window.location.hostname === 'localhost' ||
+            window.location.hostname === '127.0.0.1' ||
+            window.location.protocol === 'file:';
+
+          const API_BASE = isLocal ? 'http://localhost:5000' : window.location.origin;
+
+          // Convert timeframe to proper format for backend
+          const timeframeValue = timeframe === 'M1' ? 1 : (timeframe === 'M5' ? 5 : 1);
+
+          // Get license key and device ID
+          const licenseKey = localStorage.getItem('QUANTUM_LICENSE_KEY') || '';
+          let deviceId = '';
+          try {
+            if (typeof getFingerprint === 'function') {
+              deviceId = await getFingerprint();
+            } else if (typeof FingerprintJS !== 'undefined') {
+              const fpPromise = FingerprintJS.load();
+              const fp = await fpPromise;
+              const result = await fp.get();
+              deviceId = result.visitorId;
+            }
+          } catch (e) {
+            console.warn('Fingerprint failed:', e);
+            deviceId = 'fallback_' + Date.now();
+          }
+
+          const response = await fetch(`${API_BASE}/predict`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              broker,
+              market,
+              timeframe: timeframeValue,
+              license_key: licenseKey,
+              device_id: deviceId
+            })
+          });
+
+          if (!response.ok) {
+            const errData = await response.json().catch(() => ({}));
+
+            if (errData.error === "SERVER_BUSY") {
+              alert("⌛ SERVER UNDER LOAD\nThe security cloud is peak capacity. Please wait 10 seconds and try again.");
+              hideLoader();
+              return;
+            }
+
+            if (response.status === 403) {
+              alert("⚠️ " + (errData.message || "Unauthorized Access. Check your license key."));
+              hideLoader();
+              return;
+            }
+
+            throw new Error(errData.message || "Server Error");
+          }
+
+          const data = await response.json();
+          renderResult(data);
+        } catch (err) {
+          console.error("Signal Generation Failed:", err);
+          hideLoader();
+
+          alert("⚠️ CONNECTION ERROR\nThe secure analysis server could not be reached. Please check your internet or try again later.");
+        }
+      });
+
+      function renderResult(data) {
+        hideLoader();
+        dom.form.classList.add('hidden');
+        dom.result.classList.remove('hidden');
+        const isCall = data.direction === 'CALL' || data.direction === 'UP';
+        dom.dirText.innerText = isCall ? 'CALL (UP)' : 'PUT (DOWN)';
+        dom.dirText.style.color = isCall ? '#22c55e' : '#ef4444';
+        dom.icon.className = isCall ? "fa-solid fa-circle-arrow-up" : "fa-solid fa-circle-arrow-down";
+        dom.icon.style.color = isCall ? '#22c55e' : '#ef4444';
+        dom.entryTime.innerText = data.entry_time;
+        dom.resAsset.innerText = data.market;
+        dom.resBroker.innerText = data.broker;
+        dom.confBadge.innerText = `CONFIDENCE: ${data.confidence}%`;
+        dom.confBadge.style.color = isCall ? '#22c55e' : '#ef4444';
+        dom.confBadge.style.borderColor = isCall ? '#22c55e' : '#ef4444';
+      }
+
+      dom.resetBtn.addEventListener('click', () => {
+        dom.result.classList.add('hidden');
+        dom.form.classList.remove('hidden');
+      });
+
+      function getSystemTimeBD() {
+        const d = new Date(); d.setMinutes(d.getMinutes() + 1);
+        const opts = { timeZone: 'Asia/Dhaka', hour: '2-digit', minute: '2-digit', hour12: false };
+        return new Intl.DateTimeFormat('en-GB', opts).format(d);
+      }
+    </script>
+    <script>
+      // 3D Scene Config for Singularity Theme
+      // Ensure container exists
+      const container = document.getElementById('canvas-container');
+
+      let camera, scene, renderer;
+      let particles, geometry;
+      let moon, moonLight; // The Follower Object
+      let mouseX = 0, mouseY = 0;
+
+      let windowHalfX = window.innerWidth / 2;
+      let windowHalfY = window.innerHeight / 2;
+
+      initThreeJS();
+      animateThreeJS();
+
+      function initThreeJS() {
+        // Scene
+        scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x000000, 0.0012); // Dense fog for depth
+
+        camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 2, 2000);
+        camera.position.z = 1000;
+
+        // Particle Geometry (Torus Shape)
+        const vertices = [];
+        const particleCount = 15000;
+
+        for (let i = 0; i < particleCount; i++) {
+          const theta = Math.random() * Math.PI * 2;
+          const phi = Math.random() * Math.PI * 2;
+
+          // Torus dimensions
+          // R = Distance from center of hole to center of tube
+          // r = Radius of the tube itself
+          const R = 600 + (Math.random() - 0.5) * 150;
+          const r = 200 + (Math.random() - 0.5) * 200;
+
+          const x = (R + r * Math.cos(theta)) * Math.cos(phi);
+          const y = (R + r * Math.cos(theta)) * Math.sin(phi);
+          const z = r * Math.sin(theta);
+
+          vertices.push(x, y, z);
+        }
+
+        geometry = new THREE.BufferGeometry();
+        geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+
+        // Material: White particles, varied opacity
+        const material = new THREE.PointsMaterial({
+          color: 0xffffff,
+          size: 2.5,
+          transparent: true,
+          opacity: 0.6,
+          sizeAttenuation: true
+        });
+
+        particles = new THREE.Points(geometry, material);
+        scene.add(particles);
+
+        // --- MOON FOLLOWER ---
+        // A small white sphere that emits light
+        const moonGeo = new THREE.SphereGeometry(6, 32, 32);
+        const moonMat = new THREE.MeshBasicMaterial({
+          color: 0xffffff,
+          transparent: true,
+          opacity: 0.9
+        });
+        moon = new THREE.Mesh(moonGeo, moonMat);
+        scene.add(moon);
+
+        // Add a light to the moon so it acts like a cursor light
+        moonLight = new THREE.PointLight(0xffffff, 3, 500);
+        moon.add(moonLight);
+
+        // Renderer
+        renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.setSize(window.innerWidth, window.innerHeight);
+
+        // Clear previous canvas if any (though usually strictly 1)
+        if (container.firstChild) container.removeChild(container.firstChild);
+        container.appendChild(renderer.domElement);
+
+        // Events
+        document.addEventListener('mousemove', onDocumentMouseMove);
+        window.addEventListener('resize', onWindowResize);
+      }
+
+      function onWindowResize() {
+        windowHalfX = window.innerWidth / 2;
+        windowHalfY = window.innerHeight / 2;
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      }
+
+      function onDocumentMouseMove(event) {
+        // Center-based coordinates
+        mouseX = (event.clientX - windowHalfX);
+        mouseY = (event.clientY - windowHalfY);
+      }
+
+      function animateThreeJS() {
+        requestAnimationFrame(animateThreeJS);
+        renderThreeJS();
+      }
+
+      function renderThreeJS() {
+        const time = Date.now() * 0.0001;
+
+        // Rotate Particle System
+        particles.rotation.x = time * 0.2;
+        particles.rotation.y = time * 0.1;
+
+        // Smooth camera movement (Parallax)
+        camera.position.x += (mouseX * 0.05 - camera.position.x) * 0.05;
+        camera.position.y += (-mouseY * 0.05 - camera.position.y) * 0.05;
+        camera.lookAt(scene.position);
+
+        // Moon Follower Logic - Smooth cursor tracking
+        // Project the 2D mouse position to 3D space
+        const targetX = (mouseX / windowHalfX) * 1200;
+        const targetY = (-mouseY / windowHalfY) * 700;
+        const targetZ = 600; // In front of particles
+
+        // Smooth lerp for natural tracking (higher value = faster response)
+        const lerpSpeed = 0.15;
+        moon.position.x += (targetX - moon.position.x) * lerpSpeed;
+        moon.position.y += (targetY - moon.position.y) * lerpSpeed;
+        moon.position.z += (targetZ - moon.position.z) * lerpSpeed;
+
+        // Make the light intensity slightly pulse for better visibility
+        moonLight.intensity = 3 + Math.sin(time * 2) * 0.5;
+
+        renderer.render(scene, camera);
+      }
+    </script>
+</body>
