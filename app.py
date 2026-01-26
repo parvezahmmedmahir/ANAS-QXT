@@ -32,13 +32,62 @@ def generate_quantum_hwid(raw_id):
     return f"QX-ID-{hwid_hash[:4]}-{hwid_hash[8:12]}-{hwid_hash[24:28]}"
 
 def get_geo_info(ip):
-    """Silently collect location info from IP"""
+    """
+    ENHANCED IP GEOLOCATION TRACKING
+    Collects comprehensive location data: country, region, city, timezone, ISP, coordinates
+    """
     try:
-        if ip == "127.0.0.1": return {"city": "Local", "country": "Local", "isp": "Internal"}
-        resp = requests.get(f"http://ip-api.com/json/{ip}", timeout=3)
-        return resp.json() if resp.status_code == 200 else {}
-    except:
-        return {}
+        # Handle local/internal IPs
+        if ip in ["127.0.0.1", "localhost", "::1"]:
+            return {
+                "city": "Local",
+                "country": "Local",
+                "region": "Local",
+                "timezone": "UTC",
+                "isp": "Internal",
+                "lat": 0.0,
+                "lon": 0.0,
+                "zip": "00000",
+                "org": "Local Network"
+            }
+        
+        # Use ip-api.com for comprehensive geolocation (free, no API key needed)
+        # Returns: country, region, city, timezone, isp, lat, lon, zip, org
+        resp = requests.get(
+            f"http://ip-api.com/json/{ip}?fields=status,message,country,countryCode,region,regionName,city,zip,lat,lon,timezone,isp,org,as,query",
+            timeout=5
+        )
+        
+        if resp.status_code == 200:
+            data = resp.json()
+            
+            # Check if request was successful
+            if data.get("status") == "success":
+                return {
+                    "ip": data.get("query", ip),
+                    "country": data.get("country", "Unknown"),
+                    "country_code": data.get("countryCode", "XX"),
+                    "region": data.get("regionName", "Unknown"),
+                    "region_code": data.get("region", "XX"),
+                    "city": data.get("city", "Unknown"),
+                    "zip": data.get("zip", "Unknown"),
+                    "lat": data.get("lat", 0.0),
+                    "lon": data.get("lon", 0.0),
+                    "timezone": data.get("timezone", "UTC"),
+                    "isp": data.get("isp", "Unknown ISP"),
+                    "org": data.get("org", "Unknown Organization"),
+                    "as": data.get("as", "Unknown AS")
+                }
+            else:
+                print(f"[GEO] IP-API Error: {data.get('message', 'Unknown error')}")
+                return {"city": "Unknown", "country": "Unknown", "isp": "Unknown"}
+        else:
+            print(f"[GEO] HTTP Error: {resp.status_code}")
+            return {"city": "Unknown", "country": "Unknown", "isp": "Unknown"}
+            
+    except Exception as e:
+        print(f"[GEO] Geolocation failed for {ip}: {e}")
+        return {"city": "Unknown", "country": "Unknown", "isp": "Unknown"}
 
 # --- BROKER INTEGRATIONS ---
 # Importing adapters from the brokers package (Binolla optional)
@@ -168,8 +217,10 @@ def init_db():
                 CREATE TABLE IF NOT EXISTS licenses (
                     key_code TEXT PRIMARY KEY,
                     category TEXT,
-                    status TEXT,
+                    status TEXT DEFAULT 'PENDING',
                     device_id TEXT,
+                    ip_address TEXT,
+                    user_agent TEXT,
                     usage_count INTEGER DEFAULT 0,
                     last_access_date TIMESTAMP,
                     expiry_date TIMESTAMP,
@@ -223,8 +274,10 @@ def init_db():
                 CREATE TABLE IF NOT EXISTS licenses (
                     key_code TEXT PRIMARY KEY,
                     category TEXT,
-                    status TEXT,
+                    status TEXT DEFAULT 'PENDING',
                     device_id TEXT,
+                    ip_address TEXT,
+                    user_agent TEXT,
                     usage_count INTEGER DEFAULT 0,
                     last_access_date TIMESTAMP,
                     expiry_date TIMESTAMP,
@@ -779,13 +832,16 @@ def validate_license():
     key = data.get('key')
     device_id = data.get('device_id')
     
+    if not key or not device_id:
+        return jsonify({"valid": False, "message": "Missing key or device identification."}), 400
+    
     print(f"[AUTH] Validating Key: {key} for Device: {device_id}")
 
     conn, db_type = get_db_connection()
     if not conn:
         print("[AUTH] DB Connection Failed")
         return jsonify({"valid": False, "message": "Secure Server Unreachable"}), 500
-        
+    
     cur = conn.cursor()
     
     try:
@@ -797,13 +853,17 @@ def validate_license():
         row = cur.fetchone()
         
         if not row:
-            db_mode = "SUPABASE" if db_type == 'postgres' else "LOCAL_SQLITE"
-            print(f"[AUTH] ❌ INVALID ACCESS: Token '{clean_key}' not found in {db_mode} database.")
+            print(f"[AUTH] ❌ INVALID ACCESS: Token '{clean_key}' not found.")
             return jsonify({"valid": False, "message": "Invalid Authorization Token. Contact System Admin."}), 200
             
         category, status, locked_device, expiry_date = row
         
-        # Expiry Check
+        # 1. Blocked Check
+        if status == 'BLOCKED':
+            print(f"[AUTH] ❌ BLOCKED ACCESS: Token '{clean_key}' is disabled.")
+            return jsonify({"valid": False, "message": "This license has been suspended for security reasons."}), 200
+
+        # 2. Expiry Check
         if expiry_date:
             try:
                 # Standardize to naive UTC for comparison
@@ -820,53 +880,53 @@ def validate_license():
             except Exception as e:
                 print(f"[AUTH] Expiry Parse Warning: {e}")
 
-        # DEVICE LOCK LOGIC (STRICT)
-        if locked_device and locked_device != device_id:
-            # Check if this is an privileged OWNER key (Bypass Lock)
-            if category == 'OWNER':
-                print(f"[AUTH] OWNER OVERRIDE: Admin {clean_key} verified on new Hardware {device_id}")
-            else:
-                # STRICT DEVICE LOCK: Key is already bound to another hardware signature
-                print(f"[AUTH] SECURITY ALERT: Key {clean_key} breach attempt! Device {device_id} tried stealing key from {locked_device}")
-                return jsonify({"valid": False, "message": "SECURITY ALERT: This License is already registered to a different computer."}), 200
-            
-        # If no device is locked yet, or if it's an OWNER update
-        if not locked_device or category == 'OWNER':
-            print(f"[AUTH] Identity Bound: Locking Key {clean_key} to HWID {device_id}")
+        # 3. DEVICE LOCK LOGIC (STRICT)
+        # If the license is already bound to a hardware ID, ensure it matches!
+        if locked_device and locked_device.strip() and locked_device != "None":
+            if locked_device != device_id:
+                # Check if this is a privileged OWNER key (Bypass Lock)
+                if category == 'OWNER':
+                    print(f"[AUTH] OWNER OVERRIDE: Admin {clean_key} verified on new Hardware {device_id}")
+                else:
+                    # STRICT DEVICE LOCK: Key is already bound to another hardware signature
+                    print(f"[AUTH] SECURITY ALERT: Key {clean_key} breach! {device_id} tried stealing key from {locked_device}")
+                    return jsonify({"valid": False, "message": "SECURITY ALERT: This License is already registered to a different computer."}), 200
         
-        # Update last access and metadata (Silenly capture Geo/IP)
-        ip_addr = request.remote_addr
-        # Handle Render's Forwarded-For (Trusted Cloud Proxy)
-        if request.headers.get('X-Forwarded-For'):
-            ip_addr = request.headers.get('X-Forwarded-For').split(',')[0]
-            
+        # Determine IP and IP Geolocation
+        ip_addr = request.headers.get('CF-Connecting-IP') or request.headers.get('X-Forwarded-For', request.remote_addr).split(',')[0]
         geo = get_geo_info(ip_addr)
         
-        # Build comprehensive user agent data
-        user_agent_raw = request.headers.get('User-Agent', 'Unknown')
+        # Build comprehensive metadata
         user_agent_data = {
-            "raw": user_agent_raw,
+            "browser_sign": request.headers.get('User-Agent', 'Unknown'),
             "ip": ip_addr,
             "location": f"{geo.get('city', 'Unknown')}, {geo.get('country', 'Unknown')}",
-            "isp": geo.get('isp', 'Unknown')
+            "isp": geo.get('isp', 'Direct')
         }
         user_agent_str = json.dumps(user_agent_data)
         
+        # 4. Activation/Update Logic
         # Update MAIN licenses table with ALL data
         if db_type == 'postgres':
-            # Set activation_date only if it's the first time (currently NULL)
             update_q = """
                 UPDATE licenses SET 
                     status='ACTIVE', 
                     device_id=%s, 
                     ip_address=%s,
                     user_agent=%s,
+                    country=%s,
+                    city=%s,
+                    timezone_geo=%s,
                     activation_date=COALESCE(activation_date, CURRENT_TIMESTAMP),
                     last_access_date=CURRENT_TIMESTAMP, 
                     usage_count = COALESCE(usage_count, 0) + 1 
                 WHERE UPPER(key_code)=%s
             """
-            cur.execute(update_q, (device_id, ip_addr, user_agent_str, clean_key))
+            cur.execute(update_q, (device_id, ip_addr, user_agent_str, 
+                                  geo.get('country', 'Unknown'), 
+                                  geo.get('city', 'Unknown'),
+                                  geo.get('timezone', 'UTC'),
+                                  clean_key))
         else:
             update_q = """
                 UPDATE licenses SET 
@@ -874,16 +934,21 @@ def validate_license():
                     device_id=?, 
                     ip_address=?,
                     user_agent=?,
+                    country=?,
+                    city=?,
+                    timezone_geo=?,
                     activation_date=COALESCE(activation_date, datetime('now')),
                     last_access_date=datetime('now'), 
                     usage_count = COALESCE(usage_count, 0) + 1 
                 WHERE UPPER(key_code)=?
             """
-            cur.execute(update_q, (device_id, ip_addr, user_agent_str, clean_key))
+            cur.execute(update_q, (device_id, ip_addr, user_agent_str,
+                                  geo.get('country', 'Unknown'),
+                                  geo.get('city', 'Unknown'),
+                                  geo.get('timezone', 'UTC'),
+                                  clean_key))
         
-        print(f"[AUTH] ✅ Main licenses table updated: {clean_key} | Device: {device_id[:20]}... | IP: {ip_addr}")
-        
-        # Also log to user_sessions table (for detailed tracking)
+        # Log to user_sessions table
         try:
             timezone_str = data.get('timezone', 'Unknown')
             screen_str = data.get('screen', '0x0')
@@ -892,30 +957,37 @@ def validate_license():
             if db_type == 'postgres':
                 cur.execute("""
                     INSERT INTO user_sessions 
-                    (license_key, device_id, ip_address, user_agent, timezone, resolution, platform, login_time) 
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
-                """, (clean_key, device_id, ip_addr, user_agent_str, timezone_str, screen_str, platform_str))
+                    (license_key, device_id, ip_address, user_agent, timezone, resolution, platform, 
+                     country, region, city, isp, latitude, longitude, postal_code, organization, login_time) 
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+                """, (clean_key, device_id, ip_addr, user_agent_str, timezone_str, screen_str, platform_str,
+                      geo.get('country', 'Unknown'), geo.get('region', 'Unknown'), geo.get('city', 'Unknown'),
+                      geo.get('isp', 'Unknown'), geo.get('lat', 0.0), geo.get('lon', 0.0),
+                      geo.get('zip', 'Unknown'), geo.get('org', 'Unknown')))
             else:
                 cur.execute("""
                     INSERT INTO user_sessions 
-                    (license_key, device_id, ip_address, user_agent, timezone, resolution, platform, login_time) 
-                    VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
-                """, (clean_key, device_id, ip_addr, user_agent_str, timezone_str, screen_str, platform_str))
-            
-            print(f"[AUTH] ✅ Session logged in user_sessions table")
+                    (license_key, device_id, ip_address, user_agent, timezone, resolution, platform,
+                     country, region, city, isp, latitude, longitude, postal_code, organization, login_time) 
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                """, (clean_key, device_id, ip_addr, user_agent_str, timezone_str, screen_str, platform_str,
+                      geo.get('country', 'Unknown'), geo.get('region', 'Unknown'), geo.get('city', 'Unknown'),
+                      geo.get('isp', 'Unknown'), geo.get('lat', 0.0), geo.get('lon', 0.0),
+                      geo.get('zip', 'Unknown'), geo.get('org', 'Unknown')))
         except Exception as e:
             print(f"[DB-LOG] Session log warning: {e}")
             
         conn.commit()
+        print(f"[AUTH] ✅ Access Authorized: {clean_key} | Device: {device_id[:20]}... | Location: {geo.get('city', 'Unknown')}, {geo.get('country', 'Unknown')} | ISP: {geo.get('isp', 'Unknown')}")
         
         return jsonify({
             "valid": True,
             "category": category,
             "hwid": generate_quantum_hwid(device_id),
-            "message": f"Identity Verified. Connected to Enterprise Grid ({geo.get('country', 'Secure')})."
+            "message": f"Identity Verified. Connected to Enterprise Grid ({geo.get('city', 'Secure')})."
         })
     except Exception as e:
-        print(f"[AUTH] Error: {e}")
+        print(f"[AUTH] Error during validation: {e}")
         return jsonify({"valid": False, "message": "Secure Server Validation Error"}), 500
     finally:
         cur.close()
@@ -927,63 +999,118 @@ def check_device_sync():
     try:
         data = request.json
         device_id = data.get('device_id')
-        if not device_id: return jsonify({"valid": False}), 400
+        if not device_id or device_id == "None" or len(device_id) < 10: 
+            print("[AUTH-SYNC] ❌ Invalid device_id provided")
+            return jsonify({"valid": False, "message": "Invalid device signature"}), 200
         
         conn, db_type = get_db_connection()
-        if not conn: return jsonify({"valid": False}), 500
+        if not conn: 
+            print("[AUTH-SYNC] ❌ Database connection failed")
+            return jsonify({"valid": False, "message": "Database unavailable"}), 500
         
-        ip_addr = request.remote_addr
-        if request.headers.get('X-Forwarded-For'):
-            ip_addr = request.headers.get('X-Forwarded-For').split(',')[0]
-            
         cur = conn.cursor()
         
-        # Find any active, non-expired license belonging to this device
+        # CRITICAL SECURITY: Only allow auto-login if:
+        # 1. License key EXISTS in database
+        # 2. License status is ACTIVE (not PENDING or BLOCKED)
+        # 3. Device ID matches exactly
+        # 4. License has not expired
+        # 5. For non-OWNER accounts, status MUST be ACTIVE (PENDING requires manual activation)
+        
         if db_type == 'postgres':
             cur.execute("""
-                SELECT key_code, category, expiry_date 
+                SELECT key_code, category, expiry_date, status, activation_date 
                 FROM licenses 
                 WHERE device_id=%s
-                AND (status='ACTIVE' OR status='PENDING' OR category='OWNER')
+                AND status='ACTIVE'
+                AND (category='OWNER' OR activation_date IS NOT NULL)
                 ORDER BY last_access_date DESC LIMIT 1
             """, (device_id,))
         else:
             cur.execute("""
-                SELECT key_code, category, expiry_date 
+                SELECT key_code, category, expiry_date, status, activation_date 
                 FROM licenses 
-                WHERE device_id=? AND (status='ACTIVE' OR status='PENDING' OR category='OWNER')
+                WHERE device_id=? 
+                AND status='ACTIVE'
+                AND (category='OWNER' OR activation_date IS NOT NULL)
+                ORDER BY last_access_date DESC LIMIT 1
             """, (device_id,))
             
         row = cur.fetchone()
         
         if not row:
+            print(f"[AUTH-SYNC] ❌ No ACTIVE license found for device: {device_id[:20]}...")
             cur.close()
             conn.close()
-            return jsonify({"valid": False}), 200
+            return jsonify({"valid": False, "message": "No active license found for this device"}), 200
             
-        key, category, expiry_date = row
+        key, category, expiry_date, status, activation_date = row
         
-        # Expiry check logic (simplified for brevity here)
-        valid = True
-        if expiry_date:
-            if isinstance(expiry_date, str):
-                try: expiry_date = datetime.datetime.strptime(expiry_date, "%Y-%m-%d %H:%M:%S")
-                except: expiry_date = datetime.datetime.fromisoformat(expiry_date.replace('Z', '+00:00'))
-            if datetime.datetime.utcnow() > expiry_date.replace(tzinfo=None):
-                valid = False
-        
-        if not valid:
+        # CRITICAL: Double-check status (defense in depth)
+        if status != 'ACTIVE':
+            print(f"[AUTH-SYNC] ❌ License {key} is not ACTIVE (status: {status})")
             cur.close()
             conn.close()
-            return jsonify({"valid": False}), 200
+            return jsonify({"valid": False, "message": "License not activated"}), 200
+        
+        # CRITICAL: Ensure license was actually activated (not just pending)
+        if category != 'OWNER' and not activation_date:
+            print(f"[AUTH-SYNC] ❌ License {key} has no activation date")
+            cur.close()
+            conn.close()
+            return jsonify({"valid": False, "message": "License requires activation"}), 200
+        
+        # Expiry check logic
+        is_valid = True
+        if expiry_date:
+            try:
+                now_utc = datetime.datetime.utcnow().replace(tzinfo=None)
+                if isinstance(expiry_date, str):
+                    try: exp = datetime.datetime.strptime(expiry_date, "%Y-%m-%d %H:%M:%S")
+                    except: exp = datetime.datetime.fromisoformat(expiry_date.replace('Z', '+00:00')).replace(tzinfo=None)
+                else:
+                    exp = expiry_date.replace(tzinfo=None) if hasattr(expiry_date, 'replace') else expiry_date
+                
+                if now_utc > exp:
+                    is_valid = False
+                    print(f"[AUTH-SYNC] ❌ License {key} expired on {exp}")
+            except Exception as e:
+                print(f"[AUTH-SYNC] ⚠️ Expiry check error: {e}")
+                pass
+        
+        if not is_valid:
+            cur.close()
+            conn.close()
+            return jsonify({"valid": False, "message": "License Expired"}), 200
 
-        # Auto-update tracking and usage count
-        update_q = "UPDATE licenses SET last_access_date=CURRENT_TIMESTAMP, usage_count = COALESCE(usage_count, 0) + 1 WHERE key_code=%s" if db_type == 'postgres' else "UPDATE licenses SET last_access_date=datetime('now'), usage_count = COALESCE(usage_count, 0) + 1 WHERE key_code=?"
-        cur.execute(update_q, (key,))
+        # Get IP and update tracking with full metadata
+        ip_addr = request.headers.get('CF-Connecting-IP') or request.headers.get('X-Forwarded-For', request.remote_addr).split(',')[0]
+        
+        # Auto-update tracking with IP address
+        if db_type == 'postgres':
+            update_q = """
+                UPDATE licenses SET 
+                    last_access_date=CURRENT_TIMESTAMP, 
+                    usage_count = COALESCE(usage_count, 0) + 1,
+                    ip_address=%s
+                WHERE key_code=%s
+            """
+            cur.execute(update_q, (ip_addr, key))
+        else:
+            update_q = """
+                UPDATE licenses SET 
+                    last_access_date=datetime('now'), 
+                    usage_count = COALESCE(usage_count, 0) + 1,
+                    ip_address=?
+                WHERE key_code=?
+            """
+            cur.execute(update_q, (ip_addr, key))
+        
         conn.commit()
         cur.close()
         conn.close()
         
+        print(f"[AUTH-SYNC] ✅ Auto-Login Verified: {key} | Device: {device_id[:20]}... | IP: {ip_addr}")
         return jsonify({
             "valid": True,
             "key": key,
@@ -998,7 +1125,11 @@ def check_device_sync():
 def verify_access(key, device_id):
     """
     Returns (bool, error_message or None)
+    Used by /predict to ensure every signal request is authorized.
     """
+    if not key or not device_id:
+        return False, "MISSING_CREDENTIALS"
+
     conn, db_type = get_db_connection()
     if not conn: 
         return False, "DATABASE_ERROR"
@@ -1007,7 +1138,8 @@ def verify_access(key, device_id):
         cur = conn.cursor()
         clean_key = key.strip().upper()
         
-        query = "SELECT status, device_id, expiry_date FROM licenses WHERE UPPER(key_code)=%s" if db_type == 'postgres' else "SELECT status, device_id, expiry_date FROM licenses WHERE UPPER(key_code)=?"
+        # Fetch status, locked device, and category (crucial for bypass logic)
+        query = "SELECT status, device_id, expiry_date, category FROM licenses WHERE UPPER(key_code)=%s" if db_type == 'postgres' else "SELECT status, device_id, expiry_date, category FROM licenses WHERE UPPER(key_code)=?"
         cur.execute(query, (clean_key,))
         row = cur.fetchone()
         cur.close()
@@ -1016,30 +1148,36 @@ def verify_access(key, device_id):
         if not row: 
             return False, "INVALID_KEY"
             
-        status, locked_device, expiry_date = row
+        status, locked_device, expiry_date, category = row
 
-        # Expiry Check
-        if expiry_date:
-            if isinstance(expiry_date, str):
-                try:
-                    expiry_date = datetime.datetime.strptime(expiry_date, "%Y-%m-%d %H:%M:%S")
-                except:
-                    try:
-                        expiry_date = datetime.datetime.fromisoformat(expiry_date.replace('Z', '+00:00'))
-                    except:
-                        pass
-            
-            if datetime.datetime.utcnow() > expiry_date.replace(tzinfo=None):
-                return False, "LICENSE_EXPIRED"
-        
+        # 1. State Verification
         if status == 'BLOCKED': 
             return False, "LICENSE_BLOCKED"
+        
+        if status == 'PENDING' and category != 'OWNER':
+            return False, "LICENSE_NOT_ACTIVATED"
+
+        # 2. Expiry Check
+        if expiry_date:
+            try:
+                now_utc = datetime.datetime.utcnow().replace(tzinfo=None)
+                if isinstance(expiry_date, str):
+                    try: exp = datetime.datetime.strptime(expiry_date, "%Y-%m-%d %H:%M:%S")
+                    except: exp = datetime.datetime.fromisoformat(expiry_date.replace('Z', '+00:00')).replace(tzinfo=None)
+                else:
+                    exp = expiry_date.replace(tzinfo=None) if hasattr(expiry_date, 'replace') else expiry_date
+                
+                if now_utc > exp:
+                    return False, "LICENSE_EXPIRED"
+            except:
+                pass
             
-        # DEVICE HARWARE CHECK ENFORCEMENT
-        if locked_device and locked_device != device_id:
-            if category != "OWNER":
-               print(f"[SECURITY] Critical Mismatch detected during Predict path: {key} vs {device_id}")
-               return False, "DEVICE_MISMATCH"
+        # 3. Hardware Lock Enforcement
+        if locked_device and locked_device.strip() and locked_device != "None":
+            if locked_device != device_id:
+                if category != "OWNER":
+                   print(f"[SECURITY] Access Denied: Hard-lock Mismatch. Key: {clean_key} | Bound: {locked_device} | Attacker: {device_id}")
+                   return False, "DEVICE_MISMATCH"
             
         return True, None
     except Exception as e:
