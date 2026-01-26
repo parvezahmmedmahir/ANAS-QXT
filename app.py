@@ -848,7 +848,7 @@ def validate_license():
         # Check Key (Case-Insensitive and Stripped)
         clean_key = key.strip().upper()
         
-        query = "SELECT category, status, device_id, expiry_date FROM licenses WHERE UPPER(key_code)=%s" if db_type == 'postgres' else "SELECT category, status, device_id, expiry_date FROM licenses WHERE UPPER(key_code)=?"
+        query = "SELECT key_code, category, status, device_id, expiry_date FROM licenses WHERE UPPER(key_code)=%s" if db_type == 'postgres' else "SELECT key_code, category, status, device_id, expiry_date FROM licenses WHERE UPPER(key_code)=?"
         cur.execute(query, (clean_key,))
         row = cur.fetchone()
         
@@ -856,7 +856,7 @@ def validate_license():
             print(f"[AUTH] ❌ INVALID ACCESS: Token '{clean_key}' not found.")
             return jsonify({"valid": False, "message": "Invalid Authorization Token. Contact System Admin."}), 200
             
-        category, status, locked_device, expiry_date = row
+        original_key, category, status, locked_device, expiry_date = row
         
         
         # 1. Blocked Check
@@ -956,7 +956,7 @@ def validate_license():
                     (license_key, device_id, ip_address, user_agent, timezone, resolution, platform, 
                      country, region, city, isp, latitude, longitude, postal_code, organization, login_time) 
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
-                """, (clean_key, device_id, ip_addr, request.headers.get('User-Agent', 'Unknown'), 
+                """, (original_key, device_id, ip_addr, request.headers.get('User-Agent', 'Unknown'), 
                       timezone_str, screen_str, platform_str,
                       geo.get('country', 'Unknown'), geo.get('region', 'Unknown'), geo.get('city', 'Unknown'),
                       geo.get('isp', 'Unknown'), geo.get('lat', 0.0), geo.get('lon', 0.0),
@@ -967,7 +967,7 @@ def validate_license():
                     (license_key, device_id, ip_address, user_agent, timezone, resolution, platform,
                      country, region, city, isp, latitude, longitude, postal_code, organization, login_time) 
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
-                """, (clean_key, device_id, ip_addr, request.headers.get('User-Agent', 'Unknown'),
+                """, (original_key, device_id, ip_addr, request.headers.get('User-Agent', 'Unknown'),
                       timezone_str, screen_str, platform_str,
                       geo.get('country', 'Unknown'), geo.get('region', 'Unknown'), geo.get('city', 'Unknown'),
                       geo.get('isp', 'Unknown'), geo.get('lat', 0.0), geo.get('lon', 0.0),
