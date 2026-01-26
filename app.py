@@ -858,6 +858,7 @@ def validate_license():
             
         category, status, locked_device, expiry_date = row
         
+        
         # 1. Blocked Check
         if status == 'BLOCKED':
             print(f"[AUTH] ❌ BLOCKED ACCESS: Token '{clean_key}' is disabled.")
@@ -866,7 +867,6 @@ def validate_license():
         # 2. Expiry Check
         if expiry_date:
             try:
-                # Standardize to naive UTC for comparison
                 now_utc = datetime.datetime.utcnow().replace(tzinfo=None)
                 if isinstance(expiry_date, str):
                     try: exp = datetime.datetime.strptime(expiry_date, "%Y-%m-%d %H:%M:%S")
@@ -880,75 +880,71 @@ def validate_license():
             except Exception as e:
                 print(f"[AUTH] Expiry Parse Warning: {e}")
 
-        # 3. DEVICE LOCK LOGIC (STRICT)
-        # If the license is already bound to a hardware ID, ensure it matches!
+        # 3. DEVICE LOCK LOGIC
+        # If license already has a device, check if it matches (unless OWNER)
         if locked_device and locked_device.strip() and locked_device != "None":
-            if locked_device != device_id:
-                # Check if this is a privileged OWNER key (Bypass Lock)
-                if category == 'OWNER':
-                    print(f"[AUTH] OWNER OVERRIDE: Admin {clean_key} verified on new Hardware {device_id}")
-                else:
-                    # STRICT DEVICE LOCK: Key is already bound to another hardware signature
-                    print(f"[AUTH] SECURITY ALERT: Key {clean_key} breach! {device_id} tried stealing key from {locked_device}")
-                    return jsonify({"valid": False, "message": "SECURITY ALERT: This License is already registered to a different computer."}), 200
+            if locked_device != device_id and category != 'OWNER':
+                print(f"[AUTH] SECURITY ALERT: Key {clean_key} locked to {locked_device}, attempt from {device_id}")
+                return jsonify({"valid": False, "message": "License Locked to Another Device"}), 403
         
-        # Determine IP and IP Geolocation
+        # 4. Get IP and Geolocation
         ip_addr = request.headers.get('CF-Connecting-IP') or request.headers.get('X-Forwarded-For', request.remote_addr).split(',')[0]
         geo = get_geo_info(ip_addr)
         
-        # Build comprehensive metadata
-        user_agent_data = {
-            "browser_sign": request.headers.get('User-Agent', 'Unknown'),
-            "ip": ip_addr,
-            "location": f"{geo.get('city', 'Unknown')}, {geo.get('country', 'Unknown')}",
-            "isp": geo.get('isp', 'Direct')
-        }
-        user_agent_str = json.dumps(user_agent_data)
-        
-        # 4. Activation/Update Logic
-        # Update MAIN licenses table with ALL data
-        if db_type == 'postgres':
-            update_q = """
-                UPDATE licenses SET 
-                    status='ACTIVE', 
-                    device_id=%s, 
-                    ip_address=%s,
-                    user_agent=%s,
-                    country=%s,
-                    city=%s,
-                    timezone_geo=%s,
-                    activation_date=COALESCE(activation_date, CURRENT_TIMESTAMP),
-                    last_access_date=CURRENT_TIMESTAMP, 
-                    usage_count = COALESCE(usage_count, 0) + 1 
-                WHERE UPPER(key_code)=%s
-            """
-            cur.execute(update_q, (device_id, ip_addr, user_agent_str, 
-                                  geo.get('country', 'Unknown'), 
-                                  geo.get('city', 'Unknown'),
-                                  geo.get('timezone', 'UTC'),
-                                  clean_key))
+        # 5. ACTIVATE LICENSE (Like previous system)
+        # If no device_id, this is first activation
+        if not locked_device or locked_device == "None":
+            print(f"[AUTH] Activating New Key on Device: {clean_key}")
+            if db_type == 'postgres':
+                cur.execute("""
+                    UPDATE licenses SET 
+                        status='ACTIVE', 
+                        device_id=%s, 
+                        ip_address=%s,
+                        country=%s,
+                        city=%s,
+                        timezone_geo=%s,
+                        activation_date=CURRENT_TIMESTAMP,
+                        last_access_date=CURRENT_TIMESTAMP,
+                        usage_count=1
+                    WHERE UPPER(key_code)=%s
+                """, (device_id, ip_addr, geo.get('country', 'Unknown'), geo.get('city', 'Unknown'), 
+                      geo.get('timezone', 'UTC'), clean_key))
+            else:
+                cur.execute("""
+                    UPDATE licenses SET 
+                        status='ACTIVE', 
+                        device_id=?, 
+                        ip_address=?,
+                        country=?,
+                        city=?,
+                        timezone_geo=?,
+                        activation_date=datetime('now'),
+                        last_access_date=datetime('now'),
+                        usage_count=1
+                    WHERE UPPER(key_code)=?
+                """, (device_id, ip_addr, geo.get('country', 'Unknown'), geo.get('city', 'Unknown'),
+                      geo.get('timezone', 'UTC'), clean_key))
         else:
-            update_q = """
-                UPDATE licenses SET 
-                    status='ACTIVE', 
-                    device_id=?, 
-                    ip_address=?,
-                    user_agent=?,
-                    country=?,
-                    city=?,
-                    timezone_geo=?,
-                    activation_date=COALESCE(activation_date, datetime('now')),
-                    last_access_date=datetime('now'), 
-                    usage_count = COALESCE(usage_count, 0) + 1 
-                WHERE UPPER(key_code)=?
-            """
-            cur.execute(update_q, (device_id, ip_addr, user_agent_str,
-                                  geo.get('country', 'Unknown'),
-                                  geo.get('city', 'Unknown'),
-                                  geo.get('timezone', 'UTC'),
-                                  clean_key))
+            # Already activated, just update last access
+            if db_type == 'postgres':
+                cur.execute("""
+                    UPDATE licenses SET 
+                        last_access_date=CURRENT_TIMESTAMP,
+                        usage_count=COALESCE(usage_count, 0) + 1,
+                        ip_address=%s
+                    WHERE UPPER(key_code)=%s
+                """, (ip_addr, clean_key))
+            else:
+                cur.execute("""
+                    UPDATE licenses SET 
+                        last_access_date=datetime('now'),
+                        usage_count=COALESCE(usage_count, 0) + 1,
+                        ip_address=?
+                    WHERE UPPER(key_code)=?
+                """, (ip_addr, clean_key))
         
-        # Log to user_sessions table
+        # 6. Log to user_sessions table
         try:
             timezone_str = data.get('timezone', 'Unknown')
             screen_str = data.get('screen', '0x0')
@@ -960,7 +956,8 @@ def validate_license():
                     (license_key, device_id, ip_address, user_agent, timezone, resolution, platform, 
                      country, region, city, isp, latitude, longitude, postal_code, organization, login_time) 
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
-                """, (clean_key, device_id, ip_addr, user_agent_str, timezone_str, screen_str, platform_str,
+                """, (clean_key, device_id, ip_addr, request.headers.get('User-Agent', 'Unknown'), 
+                      timezone_str, screen_str, platform_str,
                       geo.get('country', 'Unknown'), geo.get('region', 'Unknown'), geo.get('city', 'Unknown'),
                       geo.get('isp', 'Unknown'), geo.get('lat', 0.0), geo.get('lon', 0.0),
                       geo.get('zip', 'Unknown'), geo.get('org', 'Unknown')))
@@ -970,7 +967,8 @@ def validate_license():
                     (license_key, device_id, ip_address, user_agent, timezone, resolution, platform,
                      country, region, city, isp, latitude, longitude, postal_code, organization, login_time) 
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
-                """, (clean_key, device_id, ip_addr, user_agent_str, timezone_str, screen_str, platform_str,
+                """, (clean_key, device_id, ip_addr, request.headers.get('User-Agent', 'Unknown'),
+                      timezone_str, screen_str, platform_str,
                       geo.get('country', 'Unknown'), geo.get('region', 'Unknown'), geo.get('city', 'Unknown'),
                       geo.get('isp', 'Unknown'), geo.get('lat', 0.0), geo.get('lon', 0.0),
                       geo.get('zip', 'Unknown'), geo.get('org', 'Unknown')))
@@ -983,8 +981,7 @@ def validate_license():
         return jsonify({
             "valid": True,
             "category": category,
-            "hwid": generate_quantum_hwid(device_id),
-            "message": f"Identity Verified. Connected to Enterprise Grid ({geo.get('city', 'Secure')})."
+            "message": "Identity Verified. Connected to Enterprise Grid."
         })
     except Exception as e:
         print(f"[AUTH] Error during validation: {e}")
