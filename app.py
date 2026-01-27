@@ -241,12 +241,21 @@ def get_db_connection():
         return None, None
 
 def release_db_connection(conn, mode):
-    """Returns connection to pool for reuse"""
+    """Returns connection to pool for reuse or closes direct connection"""
+    if not conn: return
+    
+    # Mode 'postgres' can be either pooled or direct fallback
     if mode == 'postgres' and pg_pool:
-        pg_pool.putconn(conn)
-    elif mode == 'sqlite':
-        conn.close()
+        try:
+            pg_pool.putconn(conn)
+        except (psycopg2.pool.PoolError, Exception):
+            # If it's an "unkeyed connection" or pool is defunct, close it directly
+            try:
+                conn.close()
+            except:
+                pass
     else:
+        # SQLite or other fallback
         try:
             conn.close()
         except:
