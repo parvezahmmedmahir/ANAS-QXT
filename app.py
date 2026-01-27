@@ -13,6 +13,7 @@ import time
 import threading
 import os
 import psycopg2
+import psycopg2.pool
 import requests
 from functools import wraps
 from flask import Flask, request, jsonify
@@ -198,7 +199,7 @@ def init_db_pool():
                 pg_pool = psycopg2.pool.SimpleConnectionPool(
                     1, 5, # RAM SAVER: Reduced MAX connections from 20 to 5
                     DATABASE_URL,
-                    connect_timeout=15,  # Increased to 15s
+                    connect_timeout=7,  # Reduced from 15s to avoid Gunicorn timeouts
                     sslmode='require',   # Force SSL for Supabase
                     keepalives=1,
                     keepalives_idle=30,
@@ -209,7 +210,7 @@ def init_db_pool():
                 break
             except Exception as e:
                 print(f"[SERVER] ⚠️ Pool Init Warning (Attempt {i+1}): {e}")
-                time.sleep(5) # Longer backoff
+                if i < 2: time.sleep(2) # Shorter backoff
 
 # Initialize pool on startup
 init_db_pool()
@@ -228,8 +229,8 @@ def get_db_connection():
         
         # Fallback (Should rarely happen)
         if DATABASE_URL:
-            # RELAXED TIMEOUT: 15s + SSL
-            conn = psycopg2.connect(DATABASE_URL, connect_timeout=15, sslmode='require')
+            # REDUCED TIMEOUT: 7s + SSL
+            conn = psycopg2.connect(DATABASE_URL, connect_timeout=7, sslmode='require')
             return conn, 'postgres'
         else:
             conn = sqlite3.connect(DB_FILE, check_same_thread=False)
