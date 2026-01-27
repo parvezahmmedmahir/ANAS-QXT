@@ -901,6 +901,11 @@ engine = None
 
 # --- API ENDPOINTS ---
 
+@app.route('/api/ping', methods=['GET', 'POST'])
+def ping():
+    """Lightweight heartbeat for VPS-style 'Always-On' behavior"""
+    return jsonify({"status": "active", "timestamp": time.time()}), 200
+
 @app.route('/api/validate_license', methods=['POST'])
 def validate_license():
     data = request.json

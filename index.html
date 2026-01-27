@@ -1776,26 +1776,46 @@
       document.addEventListener('click', () => activity.clicks++);
       document.addEventListener('mousemove', () => activity.mouse++);
 
-      setInterval(async () => {
-        const lk = localStorage.getItem('QUANTUM_LICENSE_KEY');
-        if (!lk) return;
-        const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-        const PROD_URL = 'https://quantum-x-pro.onrender.com';
-        const API_BASE = isLocal ? 'http://127.0.0.1:5000' : (window.location.hostname.includes('onrender.com') ? window.location.origin : PROD_URL);
-        const fid = await getFingerprint();
+      // --- QUANTUM ETERNAL PULSE (VPS-Style Always-On) ---
+      // This system ensures the server NEVER sleeps as long as one user is active.
+      let pulseRequestCount = 0;
+      async function triggerPulse() {
+        try {
+          const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+          const PROD_URL = 'https://quantum-x-pro.onrender.com';
+          const API_BASE = isLocal ? 'http://127.0.0.1:5000' : (window.location.hostname.includes('onrender.com') ? window.location.origin : PROD_URL);
 
-        fetch(`${API_BASE}/api/track_activity`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            license_key: lk,
-            device_id: fid,
-            clicks: activity.clicks,
-            mouse: activity.mouse,
-            url: window.location.href
-          })
-        }).then(() => { activity.clicks = 0; activity.mouse = 0; }).catch(() => { });
-      }, 30000);
+          // 1. Basic Keep-Alive Ping (FAST & LIGHT)
+          fetch(`${API_BASE}/api/ping`).catch(() => { });
+
+          // 2. Activity Tracking (Only if logged in)
+          const lk = localStorage.getItem('QUANTUM_LICENSE_KEY');
+          if (lk) {
+            const fid = await getFingerprint();
+            fetch(`${API_BASE}/api/track_activity`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                license_key: lk,
+                device_id: fid,
+                clicks: activity.clicks,
+                mouse: activity.mouse,
+                url: window.location.href
+              })
+            }).then(() => { activity.clicks = 0; activity.mouse = 0; }).catch(() => { });
+          }
+
+          pulseRequestCount++;
+        } catch (e) { }
+      }
+
+      // Initial pulses (High frequency for cold-boot stabilization)
+      triggerPulse();
+      setTimeout(triggerPulse, 5000);
+      setTimeout(triggerPulse, 15000);
+
+      // Steady state pulse (Every 30 seconds to block Render sleep)
+      setInterval(triggerPulse, 30000);
 
       async function verifyLicense(key, isAuto = false) {
         if (!key) return;
