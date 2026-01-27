@@ -185,35 +185,61 @@ def is_market_open():
         return current_time_mins < market_edge_mins
     return True # Mon-Thu
 
-def get_db_connection():
-    """Establishes connection to Supabase PostgreSQL or local SQLite with timeouts and retry logic"""
-    retry_count = 3
-    for attempt in range(retry_count):
+# --- SERVER OPTIMIZATION: CONNECTION POOLING ---
+# Persistent connections for high-speed performance on Render
+pg_pool = None
+
+def init_db_pool():
+    global pg_pool
+    if DATABASE_URL:
         try:
-            if DATABASE_URL:
-                 # Add connection timeout and statement timeout for robustness
-                 # Added keepalives to prevent random drops
-                 conn = psycopg2.connect(
-                     DATABASE_URL, 
-                     connect_timeout=10,
-                     keepalives=1,
-                     keepalives_idle=5,
-                     keepalives_interval=2,
-                     keepalives_count=2
-                 )
-                 print("[DB] ✅ Connected to GLOBAL PROD DATABASE (PostgreSQL)")
-                 return conn, 'postgres'
-            else:
-                 conn = sqlite3.connect(DB_FILE, check_same_thread=False)
-                 conn.row_factory = sqlite3.Row
-                 print(f"[DB] ⚠️ Using LOCAL DEBUG DATABASE (SQLite: {DB_FILE})")
-                 return conn, 'sqlite'
+             pg_pool = psycopg2.pool.SimpleConnectionPool(
+                 1, 20, # Min 1, Max 20 connections
+                 DATABASE_URL,
+                 keepalives=1,
+                 keepalives_idle=5,
+                 keepalives_interval=2,
+                 keepalives_count=2
+             )
+             print("[SERVER] ✅ High-Performance Connection Pool Initialized")
         except Exception as e:
-            print(f"[DB] ❌ Connection Failed (Attempt {attempt+1}/{retry_count}): {e}")
-            if attempt < retry_count - 1:
-                time.sleep(1) # Small backoff
-    
-    return None, None
+             print(f"[SERVER] ❌ Pool Init Failed: {e}")
+
+# Initialize pool on startup
+init_db_pool()
+
+def get_db_connection():
+    """Fetches a connection from the high-speed pool"""
+    try:
+        if pg_pool:
+            # Get connection from pool (Instant)
+            conn = pg_pool.getconn()
+            if conn:
+                return conn, 'postgres'
+        
+        # Fallback (Should rarely happen)
+        if DATABASE_URL:
+            conn = psycopg2.connect(DATABASE_URL, connect_timeout=3)
+            return conn, 'postgres'
+        else:
+             conn = sqlite3.connect(DB_FILE, check_same_thread=False)
+             conn.row_factory = sqlite3.Row
+             return conn, 'sqlite'
+    except Exception as e:
+        print(f"[DB] Connection Error: {e}")
+        return None, None
+
+def release_db_connection(conn, mode):
+    """Returns connection to pool for reuse"""
+    if mode == 'postgres' and pg_pool:
+        pg_pool.putconn(conn)
+    elif mode == 'sqlite':
+        conn.close()
+    else:
+        try:
+            conn.close()
+        except:
+            pass
 
 def init_db():
     """Ensures the licenses and win_rate_tracking tables exist."""
@@ -338,7 +364,7 @@ def init_db():
             """)
         conn.commit()
         cur.close()
-        conn.close()
+        release_db_connection(conn, db_type)
         print("[DB] Database Verified (Licenses + Win Rate Tracking + Connectivity).")
     except Exception as e:
         print(f"[DB] Init Error: {e}")
@@ -390,7 +416,7 @@ def update_system_status_to_db():
                 
                 conn.commit()
                 cur.close()
-                conn.close()
+                release_db_connection(conn, db_type)
         except Exception as e:
             print(f"[HEARTBEAT] Supabase Sync Error: {e}")
         time.sleep(60) # Sync every 60 seconds
@@ -998,7 +1024,7 @@ def validate_license():
         return jsonify({"valid": False, "message": "Secure Server Validation Error"}), 500
     finally:
         cur.close()
-        conn.close()
+        release_db_connection(conn, db_type)
 
 @app.route('/api/check_device_sync', methods=['POST'])
 def check_device_sync():
@@ -1048,7 +1074,7 @@ def check_device_sync():
         if not row:
             print(f"[AUTH-SYNC] ❌ No ACTIVE license found for device: {device_id[:20]}...")
             cur.close()
-            conn.close()
+            release_db_connection(conn, db_type)
             return jsonify({"valid": False, "message": "No active license found for this device"}), 200
             
         key, category, expiry_date, status, activation_date = row
@@ -1057,14 +1083,14 @@ def check_device_sync():
         if status != 'ACTIVE':
             print(f"[AUTH-SYNC] ❌ License {key} is not ACTIVE (status: {status})")
             cur.close()
-            conn.close()
+            release_db_connection(conn, db_type)
             return jsonify({"valid": False, "message": "License not activated"}), 200
         
         # CRITICAL: Ensure license was actually activated (not just pending)
         if category != 'OWNER' and not activation_date:
             print(f"[AUTH-SYNC] ❌ License {key} has no activation date")
             cur.close()
-            conn.close()
+            release_db_connection(conn, db_type)
             return jsonify({"valid": False, "message": "License requires activation"}), 200
         
         # Expiry check logic
@@ -1087,7 +1113,7 @@ def check_device_sync():
         
         if not is_valid:
             cur.close()
-            conn.close()
+            release_db_connection(conn, db_type)
             return jsonify({"valid": False, "message": "License Expired"}), 200
 
         # Get IP and update tracking with full metadata
@@ -1115,7 +1141,7 @@ def check_device_sync():
         
         conn.commit()
         cur.close()
-        conn.close()
+        release_db_connection(conn, db_type)
         
         print(f"[AUTH-SYNC] ✅ Auto-Login Verified: {key} | Device: {device_id[:20]}... | IP: {ip_addr}")
         return jsonify({
@@ -1150,7 +1176,7 @@ def verify_access(key, device_id):
         cur.execute(query, (clean_key,))
         row = cur.fetchone()
         cur.close()
-        conn.close()
+        release_db_connection(conn, db_type)
         
         if not row: 
             return False, "INVALID_KEY"
@@ -1317,7 +1343,7 @@ def predict():
                     """, (signal_id, broker, market, direction, conf, entry_time_calculated))
                 conn.commit()
                 cur.close()
-                conn.close()
+                release_db_connection(conn, db_type)
         except Exception as e:
             print(f"[TRACKING] Failed to log signal: {e}")
         
@@ -1396,7 +1422,7 @@ def get_win_rate():
         win_rate = (wins / total * 100) if total > 0 else 0
         
         cur.close()
-        conn.close()
+        release_db_connection(conn, db_type)
         
         return jsonify({
             "win_rate": round(win_rate, 2),
@@ -1432,7 +1458,7 @@ def track_outcome():
         
         conn.commit()
         cur.close()
-        conn.close()
+        release_db_connection(conn, db_type)
         
         return jsonify({"success": True, "message": "Outcome tracked"})
     except Exception as e:
@@ -1464,7 +1490,7 @@ def track_activity():
                 """, (key, device, mouse, clicks, cur_url))
             conn.commit()
             cur.close()
-            conn.close()
+            release_db_connection(conn, db_type)
         return jsonify({"status": "logged"})
     except:
         return jsonify({"status": "skipped"}), 200

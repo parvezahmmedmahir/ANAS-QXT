@@ -1341,7 +1341,7 @@
     </div>
 
     <!-- Security & Licensing Logic -->
-    <script src="https://cdn.jsdelivr.net/npm/@fingerprintjs/fingerprintjs@3/dist/fp.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@fingerprintjs/fingerprintjs@3/dist/fp.min.js" defer></script>
     <script>
       // --- GLOBAL ERROR HANDLER ---
       window.onerror = function (msg, url, line) {
@@ -2726,7 +2726,8 @@
 
         // --- ENHANCED DISTANT STAR FIELD (Multiple Layers) ---
         const starGeometry = new THREE.BufferGeometry();
-        const starCount = 40000; // Even more stars for density
+        // OPTIMIZED: Reduced from 40,000 to 2,000 for mobile peformance
+        const starCount = 2000;
         const starPositions = [];
         const starSizes = [];
         const starBrightness = []; // Variable brightness
