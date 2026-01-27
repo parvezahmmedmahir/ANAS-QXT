@@ -197,12 +197,12 @@ def init_db_pool():
         for i in range(3): 
             try:
                 pg_pool = psycopg2.pool.SimpleConnectionPool(
-                    1, 5, # RAM SAVER: Reduced MAX connections from 20 to 5
+                    1, 15, # Optimized Pool size for high-concurrency (Max 15)
                     DATABASE_URL,
-                    connect_timeout=7,  # Reduced from 15s to avoid Gunicorn timeouts
-                    sslmode='require',   # Force SSL for Supabase
+                    connect_timeout=7,
+                    sslmode='require',
                     keepalives=1,
-                    keepalives_idle=30,
+                    keepalives_idle=20, # Aggressive cleanup of idle connections
                     keepalives_interval=10,
                     keepalives_count=5
                 )
@@ -210,7 +210,7 @@ def init_db_pool():
                 break
             except Exception as e:
                 print(f"[SERVER] ⚠️ Pool Init Warning (Attempt {i+1}): {e}")
-                if i < 2: time.sleep(2) # Shorter backoff
+                if i < 2: time.sleep(2)
 
 # Initialize pool on startup
 init_db_pool()
@@ -430,6 +430,15 @@ def update_system_status_to_db():
                 release_db_connection(conn, db_type)
         except Exception as e:
             print(f"[HEARTBEAT] Supabase Sync Error: {e}")
+            try:
+                if 'cur' in locals(): cur.close()
+                if 'conn' in locals() and 'db_type' in locals(): release_db_connection(conn, db_type)
+            except: pass
+            # Ensure connection is released even on error
+            try:
+                if 'cur' in locals(): cur.close()
+                if 'conn' in locals() and 'db_type' in locals(): release_db_connection(conn, db_type)
+            except: pass
         time.sleep(60) # Sync every 60 seconds
 
 # Start the global synchronization heartbeat
@@ -1165,6 +1174,9 @@ def check_device_sync():
     except Exception as e:
         print(f"[AUTH] Device Sync Error: {e}")
         return jsonify({"valid": False}), 500
+    finally:
+        if 'cur' in locals(): cur.close()
+        if 'conn' in locals() and 'db_type' in locals(): release_db_connection(conn, db_type)
 
 def verify_access(key, device_id):
     """
@@ -1341,20 +1353,22 @@ def predict():
         try:
             conn, db_type = get_db_connection()
             if conn:
-                cur = conn.cursor()
-                if db_type == 'postgres':
-                    cur.execute("""
-                        INSERT INTO win_rate_tracking (signal_id, broker, market, direction, confidence, entry_time)
-                        VALUES (%s, %s, %s, %s, %s, %s)
-                    """, (signal_id, broker, market, direction, conf, entry_time_calculated))
-                else:
-                    cur.execute("""
-                        INSERT INTO win_rate_tracking (signal_id, broker, market, direction, confidence, entry_time)
-                        VALUES (?, ?, ?, ?, ?, ?)
-                    """, (signal_id, broker, market, direction, conf, entry_time_calculated))
-                conn.commit()
-                cur.close()
-                release_db_connection(conn, db_type)
+                try:
+                    cur = conn.cursor()
+                    if db_type == 'postgres':
+                        cur.execute("""
+                            INSERT INTO win_rate_tracking (signal_id, broker, market, direction, confidence, entry_time)
+                            VALUES (%s, %s, %s, %s, %s, %s)
+                        """, (signal_id, broker, market, direction, conf, entry_time_calculated))
+                    else:
+                        cur.execute("""
+                            INSERT INTO win_rate_tracking (signal_id, broker, market, direction, confidence, entry_time)
+                            VALUES (?, ?, ?, ?, ?, ?)
+                        """, (signal_id, broker, market, direction, conf, entry_time_calculated))
+                    conn.commit()
+                    cur.close()
+                finally:
+                    release_db_connection(conn, db_type)
         except Exception as e:
             print(f"[TRACKING] Failed to log signal: {e}")
         
@@ -1488,20 +1502,22 @@ def track_activity():
         
         conn, db_type = get_db_connection()
         if conn:
-            cur = conn.cursor()
-            if db_type == 'postgres':
-                cur.execute("""
-                    INSERT INTO user_activity (license_key, device_id, mouse_movements, clicks, current_url, timestamp)
-                    VALUES (%s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
-                """, (key, device, mouse, clicks, cur_url))
-            else:
-                cur.execute("""
-                    INSERT INTO user_activity (license_key, device_id, mouse_movements, clicks, current_url, timestamp)
-                    VALUES (?, ?, ?, ?, ?, datetime('now'))
-                """, (key, device, mouse, clicks, cur_url))
-            conn.commit()
-            cur.close()
-            release_db_connection(conn, db_type)
+            try:
+                cur = conn.cursor()
+                if db_type == 'postgres':
+                    cur.execute("""
+                        INSERT INTO user_activity (license_key, device_id, mouse_movements, clicks, current_url, timestamp)
+                        VALUES (%s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+                    """, (key, device, mouse, clicks, cur_url))
+                else:
+                    cur.execute("""
+                        INSERT INTO user_activity (license_key, device_id, mouse_movements, clicks, current_url, timestamp)
+                        VALUES (?, ?, ?, ?, ?, datetime('now'))
+                    """, (key, device, mouse, clicks, cur_url))
+                conn.commit()
+                cur.close()
+            finally:
+                release_db_connection(conn, db_type)
         return jsonify({"status": "logged"})
     except:
         return jsonify({"status": "skipped"}), 200
@@ -1536,76 +1552,76 @@ def collect_telemetry():
         if not conn:
             return jsonify({"status": "db_error"}), 500
         
-        cur = conn.cursor()
-        
-        # Build comprehensive user agent string with all collected data
-        user_agent_data = {
-            "browser": f"{browser.get('browserName', 'Unknown')} {browser.get('browserVersion', '')}",
-            "os": f"{browser.get('osName', 'Unknown')} {browser.get('osVersion', '')}",
-            "device": f"{browser.get('screenWidth', 0)}x{browser.get('screenHeight', 0)}",
-            "mobile": browser.get('isMobile', False),
-            "tablet": browser.get('isTablet', False),
-            "location": f"{geo.get('city', 'Unknown')}, {geo.get('country', 'Unknown')}",
-            "isp": geo.get('isp', 'Unknown'),
-            "network": network.get('effectiveType', 'Unknown'),
-            "gpu": fingerprint.get('webgl', 'Unknown'),
-            "cores": fingerprint.get('cores', 0),
-            "memory": fingerprint.get('memory', 0),
-            "timezone": fingerprint.get('timezone', 'Unknown')
-        }
-        
-        user_agent_str = json.dumps(user_agent_data)
-        
-        # Store in user_sessions table (for login tracking)
-        # YOUR ACTUAL COLUMNS: id, license_key, device_id, ip_address, user_agent, timezone, resolution, platform, login_time
         try:
-            timezone_str = fingerprint.get('timezone', 'Unknown')
-            resolution_str = f"{browser.get('screenWidth', 0)}x{browser.get('screenHeight', 0)}"
-            platform_str = fingerprint.get('platform', 'Unknown')
+            cur = conn.cursor()
             
-            if db_type == 'postgres':
-                cur.execute("""
-                    INSERT INTO user_sessions 
-                    (license_key, device_id, ip_address, user_agent, timezone, resolution, platform, login_time)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
-                """, (license_key, device_id, ip_addr, user_agent_str, timezone_str, resolution_str, platform_str))
-            else:
-                cur.execute("""
-                    INSERT INTO user_sessions 
-                    (license_key, device_id, ip_address, user_agent, timezone, resolution, platform, login_time)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
-                """, (license_key, device_id, ip_addr, user_agent_str, timezone_str, resolution_str, platform_str))
+            # Build comprehensive user agent string with all collected data
+            user_agent_data = {
+                "browser": f"{browser.get('browserName', 'Unknown')} {browser.get('browserVersion', '')}",
+                "os": f"{browser.get('osName', 'Unknown')} {browser.get('osVersion', '')}",
+                "device": f"{browser.get('screenWidth', 0)}x{browser.get('screenHeight', 0)}",
+                "mobile": browser.get('isMobile', False),
+                "tablet": browser.get('isTablet', False),
+                "location": f"{geo.get('city', 'Unknown')}, {geo.get('country', 'Unknown')}",
+                "isp": geo.get('isp', 'Unknown'),
+                "network": network.get('effectiveType', 'Unknown'),
+                "gpu": fingerprint.get('webgl', 'Unknown'),
+                "cores": fingerprint.get('cores', 0),
+                "memory": fingerprint.get('memory', 0),
+                "timezone": fingerprint.get('timezone', 'Unknown')
+            }
             
-            print(f"[TELEMETRY] ✅ Session logged: {license_key} from {geo.get('city', 'Unknown')}, {geo.get('country', 'Unknown')}")
-        except Exception as e:
-            print(f"[TELEMETRY] Session log warning: {e}")
-        
-        # Store in user_activity table (for continuous tracking)
-        # YOUR ACTUAL COLUMNS: id, license_key, device_id, mouse_movements, clicks, scrolls, key_presses, session_duration, current_url, page_title, timestamp
-        try:
-            page_title = f"Telemetry: {browser.get('browserName')} on {browser.get('osName')}"
-            activity_url = f"Network: {network.get('effectiveType')} | Location: {geo.get('city')}, {geo.get('country')} | ISP: {geo.get('isp')}"
+            user_agent_str = json.dumps(user_agent_data)
             
-            if db_type == 'postgres':
-                cur.execute("""
-                    INSERT INTO user_activity 
-                    (license_key, device_id, mouse_movements, clicks, scrolls, key_presses, session_duration, current_url, page_title, timestamp)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
-                """, (license_key, device_id, 0, 0, 0, 0, 0, activity_url, page_title))
-            else:
-                cur.execute("""
-                    INSERT INTO user_activity 
-                    (license_key, device_id, mouse_movements, clicks, scrolls, key_presses, session_duration, current_url, page_title, timestamp)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
-                """, (license_key, device_id, 0, 0, 0, 0, 0, activity_url, page_title))
+            # Store in user_sessions table (for login tracking)
+            try:
+                timezone_str = fingerprint.get('timezone', 'Unknown')
+                resolution_str = f"{browser.get('screenWidth', 0)}x{browser.get('screenHeight', 0)}"
+                platform_str = fingerprint.get('platform', 'Unknown')
+                
+                if db_type == 'postgres':
+                    cur.execute("""
+                        INSERT INTO user_sessions 
+                        (license_key, device_id, ip_address, user_agent, timezone, resolution, platform, login_time)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+                    """, (license_key, device_id, ip_addr, user_agent_str, timezone_str, resolution_str, platform_str))
+                else:
+                    cur.execute("""
+                        INSERT INTO user_sessions 
+                        (license_key, device_id, ip_address, user_agent, timezone, resolution, platform, login_time)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                    """, (license_key, device_id, ip_addr, user_agent_str, timezone_str, resolution_str, platform_str))
+                
+                print(f"[TELEMETRY] ✅ Session logged: {license_key} from {geo.get('city', 'Unknown')}, {geo.get('country', 'Unknown')}")
+            except Exception as e:
+                print(f"[TELEMETRY] Session log warning: {e}")
             
-            print(f"[TELEMETRY] ✅ Activity tracked: {device_id[:16]}... | IP: {ip_addr}")
-        except Exception as e:
-            print(f"[TELEMETRY] Activity log warning: {e}")
-        
-        conn.commit()
-        cur.close()
-        conn.close()
+            # Store in user_activity table (for continuous tracking)
+            try:
+                page_title = f"Telemetry: {browser.get('browserName')} on {browser.get('osName')}"
+                activity_url = f"Network: {network.get('effectiveType')} | Location: {geo.get('city')}, {geo.get('country')} | ISP: {geo.get('isp')}"
+                
+                if db_type == 'postgres':
+                    cur.execute("""
+                        INSERT INTO user_activity 
+                        (license_key, device_id, mouse_movements, clicks, scrolls, key_presses, session_duration, current_url, page_title, timestamp)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+                    """, (license_key, device_id, 0, 0, 0, 0, 0, activity_url, page_title))
+                else:
+                    cur.execute("""
+                        INSERT INTO user_activity 
+                        (license_key, device_id, mouse_movements, clicks, scrolls, key_presses, session_duration, current_url, page_title, timestamp)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                    """, (license_key, device_id, 0, 0, 0, 0, 0, activity_url, page_title))
+                
+                print(f"[TELEMETRY] ✅ Activity tracked: {device_id[:16]}... | IP: {ip_addr}")
+            except Exception as e:
+                print(f"[TELEMETRY] Activity log warning: {e}")
+            
+            conn.commit()
+            cur.close()
+        finally:
+            release_db_connection(conn, db_type)
         
         return jsonify({
             "status": "collected",
