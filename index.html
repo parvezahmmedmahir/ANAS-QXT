@@ -1018,6 +1018,112 @@
       }
     }
 
+    /* Quantum Scanning Overlay */
+    #scanning-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.9);
+      z-index: 9000;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      backdrop-filter: blur(15px);
+    }
+
+    .scanning-grid {
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(34, 211, 238, 0.1) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(34, 211, 238, 0.1) 1px, transparent 1px);
+      background-size: 50px 50px;
+      opacity: 0.3;
+      pointer-events: none;
+      animation: gridPulse 4s ease-in-out infinite;
+    }
+
+    .scanning-line {
+      position: absolute;
+      left: 0;
+      width: 100%;
+      height: 2px;
+      background: var(--accent-cyan);
+      box-shadow: 0 0 20px var(--accent-cyan);
+      z-index: 10;
+      animation: scanVertical 2s linear infinite;
+    }
+
+    .scanning-text-wrap {
+      z-index: 20;
+      text-align: center;
+    }
+
+    .scanning-title {
+      font-family: var(--font-display);
+      font-size: 1.5rem;
+      letter-spacing: 5px;
+      color: var(--accent-cyan);
+      text-shadow: 0 0 15px var(--accent-cyan);
+      margin-bottom: 20px;
+      animation: textPulse 1s ease-in-out infinite;
+    }
+
+    .scanning-progress-bar {
+      width: 300px;
+      height: 4px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 2px;
+      overflow: hidden;
+      margin: 0 auto;
+    }
+
+    .scanning-progress-fill {
+      width: 0%;
+      height: 100%;
+      background: var(--accent-cyan);
+      box-shadow: 0 0 10px var(--accent-cyan);
+      transition: width 3s linear;
+    }
+
+    @keyframes scanVertical {
+      0% {
+        top: -10%;
+      }
+
+      100% {
+        top: 110%;
+      }
+    }
+
+    @keyframes gridPulse {
+
+      0%,
+      100% {
+        transform: scale(1);
+        opacity: 0.2;
+      }
+
+      50% {
+        transform: scale(1.1);
+        opacity: 0.4;
+      }
+    }
+
+    @keyframes textPulse {
+
+      0%,
+      100% {
+        opacity: 1;
+        transform: scale(1);
+      }
+
+      50% {
+        opacity: 0.7;
+        transform: scale(0.98);
+      }
+    }
+
     /* Responsiveness */
     @media (max-width: 768px) {
       .headline {
@@ -1041,6 +1147,23 @@
 </head>
 
 <body>
+  <!-- Quantum Scanning Overlay -->
+  <div id="scanning-overlay">
+    <div class="scanning-grid"></div>
+    <div class="scanning-line"></div>
+    <div class="scanning-text-wrap">
+      <div class="scanning-title">QUANTUM SCANNING</div>
+      <div id="scanning-asset"
+        style="font-size:0.8rem; color:#fff; letter-spacing:2px; margin-bottom:30px; font-family:var(--font-tech);">
+        ANALYZING EUR/USD VOLATILITY...</div>
+      <div class="scanning-progress-bar">
+        <div id="scan-progress" class="scanning-progress-fill"></div>
+      </div>
+      <div style="margin-top:20px; font-size:0.6rem; color:#64748b; letter-spacing:1px;">SYNCHRONIZING WITH ENTERPRISE
+        DATA CLOUD</div>
+    </div>
+  </div>
+
   <!-- Cinematic Layers -->
   <div class="vignette"></div>
   <div id="scene-container"></div>
@@ -2337,6 +2460,21 @@
 
       function showLoader(msg) { dom.loadText.innerText = msg; dom.loading.style.display = 'flex'; }
       function hideLoader() { dom.loading.style.display = 'none'; }
+      function showScanner(asset) {
+        const overlay = document.getElementById('scanning-overlay');
+        const assetText = document.getElementById('scanning-asset');
+        const progress = document.getElementById('scan-progress');
+
+        assetText.innerText = `ANALYZING ${asset} VOLATILITY...`;
+        progress.style.width = '0%';
+        overlay.style.display = 'flex';
+
+        // Trigger progress update in next tick
+        setTimeout(() => { progress.style.width = '100%'; }, 10);
+      }
+      function hideScanner() {
+        document.getElementById('scanning-overlay').style.display = 'none';
+      }
       function showError(msg) { dom.err.innerText = msg; setTimeout(() => dom.err.innerText = '', 3000); }
 
       // Legacy listener removed to use verifyLicense() exclusively
@@ -2414,7 +2552,8 @@
           const market = marketEl.value; // Uses hidden input from custom picker
           const timeframe = timeframeEl.value;
 
-          showLoader(`ANALYZING ${market}...`);
+          // --- HIGH-TECH SCANNING EFFECT ---
+          showScanner(market);
 
           try {
             // Universal API Logic
@@ -2462,9 +2601,12 @@
             const data = await response.json();
 
             // Allow fallback to synchronized deterministic signals if WS is offline
-            renderResult(data);
+            setTimeout(() => {
+              hideScanner();
+              renderResult(data);
+            }, 500); // Small extra buffer for smooth transition
           } catch (err) {
-            hideLoader();
+            hideScanner();
             console.error("Signal Generation Failed:", err);
 
             let errorMsg = "CONNECTION FAILED\n\nCould not reach the analysis server. Please ensure you are online and the system backend is running.";

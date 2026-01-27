@@ -199,7 +199,7 @@ def init_db_pool():
         for i in range(3): 
             try:
                 pg_pool = psycopg2.pool.ThreadedConnectionPool(
-                    1, 10, # Threaded Pool: Support up to 10 concurrent threads
+                    1, 5, # REDUCED POOL: 5 connections to save memory on Render Free Tier
                     DATABASE_URL,
                     connect_timeout=10,
                     sslmode='require',
@@ -214,8 +214,8 @@ def init_db_pool():
                 print(f"[SERVER] ⚠️ Pool Init Warning (Attempt {i+1}): {e}")
                 if i < 2: time.sleep(2)
 
-# Initialize pool on startup
-init_db_pool()
+# Start pool initialization in a background thread to prevent Gunicorn boot timeouts
+threading.Thread(target=init_db_pool, daemon=True).start()
 
 def get_db_connection():
     """Fetches a connection from the high-speed pool"""
@@ -725,20 +725,37 @@ class MarketDataFeed:
                 "close": c_close,
                 "ts": ts
             })
-            base_price = c_close # Next candle opens where this one closed
+            base_price = c_close 
             
         return candles[::-1]
 
-data_feed = MarketDataFeed()
-reversal_engine = ReversalEngine() if ReversalEngine else None
+# Initialize heavy modules in background
+data_feed = None
+reversal_engine = None
+enhanced_engine = None
 
-# Initialize Enhanced Engine if available
-if ENHANCED_ENGINE_AVAILABLE:
-    enhanced_engine = EnhancedEngine()
-    print("[ENGINE] ✅ Pro Engine v3.0 Loaded (Wick Rejection + Stochastic Sync)")
-else:
-    enhanced_engine = None
-    print("[ENGINE] ⚠️  Fallback Engine Active")
+def init_engines_async():
+    global data_feed, reversal_engine, enhanced_engine
+    print("[INIT] Starting Quantum X PRO Enterprise Backend Tasks...")
+    data_feed = MarketDataFeed()
+    reversal_engine = ReversalEngine() if ReversalEngine else None
+    
+    if ENHANCED_ENGINE_AVAILABLE:
+        try:
+            enhanced_engine = EnhancedEngine()
+            print("[ENGINE] ✅ Pro Engine v3.0 Loaded")
+        except Exception as e:
+            print(f"[ENGINE] ❌ Enhanced Engine Load Error: {e}")
+    else:
+        enhanced_engine = None
+        print("[ENGINE] ⚠️  Fallback Engine Active")
+    
+    # Finally initialize the main engine wrapper
+    global engine
+    engine = InstitutionalSignalEngine()
+
+# Launch background init
+threading.Thread(target=init_engines_async, daemon=True).start()
 
 # --- ADVANCED SIGNAL STRATEGIES ---
 class InstitutionalSignalEngine:
@@ -879,7 +896,8 @@ class InstitutionalSignalEngine:
         conf = max(70, min(98, conf))
         return direction, conf
 
-engine = InstitutionalSignalEngine()
+# Will be initialized in background
+engine = None
 
 # --- API ENDPOINTS ---
 
@@ -1314,6 +1332,13 @@ def predict():
             }), 403
         # ----------------------------
         
+        # Wait for data_feed if it's still initializing in background
+        if data_feed is None:
+            return jsonify({
+                "error": "SERVER_INITIALIZING",
+                "message": "Quantum systems are still calibrating. Please try again in 5 seconds."
+            }), 503
+
         candles = data_feed.get_candles(market, timeframe)
         
         # --- WS & DATA VALIDATION (High-Precision Rule) ---
@@ -1352,10 +1377,15 @@ def predict():
             
             # Get win rate estimate
             win_rate = enhanced_engine.get_win_rate(market)
-        else:
+        elif engine:
             direction, conf = engine.analyze(broker, market, timeframe, candles=candles, entry_time=entry_time_calculated)
             strategy = "STANDARD_ANALYSIS"
             win_rate = 0
+        else:
+            return jsonify({
+                "error": "SERVER_INITIALIZING",
+                "message": "Quantum analysis engine is still booting. Please wait 5 seconds."
+            }), 503
         
         # Generate unique signal ID for tracking
         signal_id = f"{broker}_{market}_{int(time.time())}"
@@ -1386,6 +1416,12 @@ def predict():
         # Determine data source quality
         data_quality = "REAL" if candles else "SIMULATED"
         
+        # --- QUANTUM SCANNING DELAY (User Request) ---
+        # Fixed 3-second delay for professional 'market scanning' feel
+        scan_time = 3.0
+        print(f"[QUANTUM] Analyzing {market} volatility... ({scan_time:.1f}s)")
+        time.sleep(scan_time)
+        # ---------------------------------------------
         return jsonify({
             "direction": direction,
             "confidence": conf,
