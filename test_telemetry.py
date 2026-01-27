@@ -61,7 +61,7 @@ def test_telemetry():
     # Test both local and cloud
     endpoints = [
         ("LOCAL", "http://127.0.0.1:5000"),
-        ("CLOUD", "https://quantum-x-pro-backend.onrender.com")
+        ("CLOUD", "https://quantum-x-pro.onrender.com")
     ]
     
     for name, base_url in endpoints:

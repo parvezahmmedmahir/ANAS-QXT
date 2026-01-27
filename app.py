@@ -186,24 +186,34 @@ def is_market_open():
     return True # Mon-Thu
 
 def get_db_connection():
-    """Establishes connection to Supabase PostgreSQL or local SQLite with timeouts"""
-    try:
-        if DATABASE_URL:
-             # Add connection timeout and statement timeout for robustness
-             conn = psycopg2.connect(DATABASE_URL, connect_timeout=5)
-             # Set a statement timeout of 10s to prevent hanging
-             # cur = conn.cursor()
-             # cur.execute("SET statement_timeout = 10000") 
-             print("[DB] ✅ Connected to GLOBAL PROD DATABASE (PostgreSQL)")
-             return conn, 'postgres'
-        else:
-             conn = sqlite3.connect(DB_FILE, check_same_thread=False)
-             conn.row_factory = sqlite3.Row
-             print(f"[DB] ⚠️ Using LOCAL DEBUG DATABASE (SQLite: {DB_FILE})")
-             return conn, 'sqlite'
-    except Exception as e:
-        print(f"[DB] ❌ Connection Failed: {e}")
-        return None, None
+    """Establishes connection to Supabase PostgreSQL or local SQLite with timeouts and retry logic"""
+    retry_count = 3
+    for attempt in range(retry_count):
+        try:
+            if DATABASE_URL:
+                 # Add connection timeout and statement timeout for robustness
+                 # Added keepalives to prevent random drops
+                 conn = psycopg2.connect(
+                     DATABASE_URL, 
+                     connect_timeout=10,
+                     keepalives=1,
+                     keepalives_idle=5,
+                     keepalives_interval=2,
+                     keepalives_count=2
+                 )
+                 print("[DB] ✅ Connected to GLOBAL PROD DATABASE (PostgreSQL)")
+                 return conn, 'postgres'
+            else:
+                 conn = sqlite3.connect(DB_FILE, check_same_thread=False)
+                 conn.row_factory = sqlite3.Row
+                 print(f"[DB] ⚠️ Using LOCAL DEBUG DATABASE (SQLite: {DB_FILE})")
+                 return conn, 'sqlite'
+        except Exception as e:
+            print(f"[DB] ❌ Connection Failed (Attempt {attempt+1}/{retry_count}): {e}")
+            if attempt < retry_count - 1:
+                time.sleep(1) # Small backoff
+    
+    return None, None
 
 def init_db():
     """Ensures the licenses and win_rate_tracking tables exist."""

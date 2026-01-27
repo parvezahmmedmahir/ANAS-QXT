@@ -14,7 +14,7 @@ def test_api():
     # Test both local and cloud
     endpoints = [
         ("LOCAL SERVER", "http://127.0.0.1:5000"),
-        ("CLOUD SERVER", "https://quantum-x-pro-backend.onrender.com")
+        ("CLOUD SERVER", "https://quantum-x-pro.onrender.com")
     ]
     
     # Generate a test device ID (similar to frontend)

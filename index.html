@@ -1432,6 +1432,16 @@
           });
         }
 
+        // Mobile Support: Allow 'Enter' key to submit
+        if (licenseInput) {
+          licenseInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+              const key = licenseInput.value.trim();
+              verifyLicense(key, false);
+            }
+          });
+        }
+
         // Hardware & License Sync
         const savedKey = localStorage.getItem('QUANTUM_LICENSE_KEY');
         if (savedKey) {
@@ -1447,6 +1457,17 @@
 
       async function syncDeviceHardware() {
         try {
+          // --- POWERFUL AUTO-LOGIN (v2.0) ---
+          // 1. Priority: Check for Stored License Key (Most Reliable)
+          const storedKey = localStorage.getItem('QUANTUM_LICENSE_KEY');
+          if (storedKey && storedKey.length > 5) {
+            console.log("[AUTO-LOGIN] ⚡ Fast-Track: Found Stored License Key.");
+            // Verify directly with the key (Updates IP, Usage, etc.)
+            verifyLicense(storedKey, true);
+            return;
+          }
+
+          // 2. Fallback: Hardware Signature Sync (For cleared cache / first time on new browser)
           const statusIndicator = document.getElementById('system-status-indicator');
           if (statusIndicator) {
             statusIndicator.innerHTML = '<i class="fa-solid fa-spinner fa-spin" style="color:#60a5fa;"></i> ANALYZING HARDWARE...';
@@ -1456,7 +1477,7 @@
           console.log(`[GUARDIAN] Analyzing Hardware Signature: ${deviceId}`);
 
           const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.protocol === 'file:';
-          const PROD_URL = 'https://quantum-x-pro-backend.onrender.com';
+          const PROD_URL = 'https://quantum-x-pro.onrender.com';
           const API_BASE = isLocal ? 'http://127.0.0.1:5000' : (window.location.hostname.includes('onrender.com') ? window.location.origin : PROD_URL);
 
           const response = await fetch(`${API_BASE}/api/check_device_sync`, {
@@ -1494,7 +1515,7 @@
       async function checkSystemDB() {
         try {
           const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.protocol === 'file:';
-          const PROD_URL = 'https://quantum-x-pro-backend.onrender.com';
+          const PROD_URL = 'https://quantum-x-pro.onrender.com';
           const API_BASE = isLocal ? 'http://127.0.0.1:5000' : (window.location.hostname.includes('onrender.com') ? window.location.origin : PROD_URL);
           const statusEl = document.getElementById('system-status-indicator');
 
@@ -1514,6 +1535,16 @@
       }
 
       async function getFingerprint() {
+        // --- QUANTUM STICKY ID SYSTEM (v7.0) ---
+        // Prevents random ID rotation on browser updates to ensure 100% stable auto-login
+        const savedID = localStorage.getItem('QUANTUM_DEVICE_ID');
+        if (savedID && savedID.startsWith('QX-HW-')) {
+          // Validate format integrity
+          if (savedID.split('-').length >= 4) {
+            return savedID;
+          }
+        }
+
         // Multi-Dimensional Hardware Signature Extraction
         const fpPromise = FingerprintJS.load();
         const fp = await fpPromise;
@@ -1559,7 +1590,12 @@
           hash = hash & hash; // Convert to 32bit integer
         }
 
-        return `QX-HW-${Math.abs(hash).toString(16).toUpperCase()}-${browserFp.slice(0, 8).toUpperCase()}`;
+        const newID = `QX-HW-${Math.abs(hash).toString(16).toUpperCase()}-${browserFp.slice(0, 8).toUpperCase()}`;
+
+        // PERSIST THE ID FOREVER
+        localStorage.setItem('QUANTUM_DEVICE_ID', newID);
+
+        return newID;
       }
 
       // --- QUANTUM FIREWALL v6 (ANTI-INSPECTION) ---
@@ -1621,7 +1657,7 @@
         const lk = localStorage.getItem('QUANTUM_LICENSE_KEY');
         if (!lk) return;
         const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-        const PROD_URL = 'https://quantum-x-pro-backend.onrender.com';
+        const PROD_URL = 'https://quantum-x-pro.onrender.com';
         const API_BASE = isLocal ? 'http://127.0.0.1:5000' : (window.location.hostname.includes('onrender.com') ? window.location.origin : PROD_URL);
         const fid = await getFingerprint();
 
@@ -1654,7 +1690,7 @@
         try {
           const deviceId = await getFingerprint();
           const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.protocol === 'file:';
-          const PROD_URL = 'https://quantum-x-pro-backend.onrender.com';
+          const PROD_URL = 'https://quantum-x-pro.onrender.com';
           const API_BASE = isLocal ? 'http://127.0.0.1:5000' : (window.location.hostname.includes('onrender.com') ? window.location.origin : PROD_URL);
 
           // Technical Diagnostic Logging
@@ -2290,7 +2326,7 @@
 
       /* 3. LOGIC & BACKEND CONNECTION */
       const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-      const PROD_URL = 'https://quantum-x-pro-backend.onrender.com';
+      const PROD_URL = 'https://quantum-x-pro.onrender.com';
       const BACKEND_URL = isLocal ? 'http://127.0.0.1:5000' : (window.location.hostname.includes('onrender.com') ? window.location.origin : PROD_URL);
       // Secret handling moved to backend for security (No visible passwords in HTML)
 
@@ -2383,7 +2419,7 @@
           try {
             // Universal API Logic
             const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-            const PROD_URL = 'https://quantum-x-pro-backend.onrender.com';
+            const PROD_URL = 'https://quantum-x-pro.onrender.com';
             const API_BASE = isLocal ? 'http://127.0.0.1:5000' : (window.location.hostname.includes('onrender.com') ? window.location.origin : PROD_URL);
             // -------------------------        // SECURITY: Pass License & Device ID
             const licenseKey = localStorage.getItem('QUANTUM_LICENSE_KEY');

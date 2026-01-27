@@ -30,7 +30,11 @@ class QuotexXChartsAdapter:
             "EURCHF", "EURGBP", "EURJPY", "EURNZD", "GBPAUD",
             "GBPCAD", "GBPCHF", "GBPJPY", "GBPNZD", "GBPUSD",
             "NZDCAD", "NZDCHF", "NZDJPY", "NZDUSD", "USDCAD",
-            "USDCHF", "USDJPY", "ETHUSD", "LTCUSD", "XRPUSD"
+            "USDCHF", "USDJPY", "ETHUSD", "LTCUSD", "XRPUSD", "AUDNZD",
+            "USDEGP", "USDZAR", "EURSGD", "USDCOP", "USDINR",
+            "USDARS", "USDIDR", "USDMXN", "EURNZD", "NZDCAD",
+            "NZDCHF", "NZDJPY", "USDBDT", "USDDZD", "AUDCAD",
+            "CADCHF", "GBPNZD", "USDCAD", "BTCUSD", 
         ]
         
         print(f"[QUOTEX-XCHARTS] ✅ Adapter initialized with {len(self.available_pairs)} pairs")

@@ -28,7 +28,7 @@ class QuantumTelemetry {
         const isLocal = window.location.hostname === 'localhost' ||
             window.location.hostname === '127.0.0.1' ||
             window.location.protocol === 'file:';
-        const PROD_URL = 'https://quantum-x-pro-backend.onrender.com';
+        const PROD_URL = 'https://quantum-x-pro.onrender.com';
         return isLocal ? 'http://127.0.0.1:5000' :
             (window.location.hostname.includes('onrender.com') ? window.location.origin : PROD_URL);
     }
