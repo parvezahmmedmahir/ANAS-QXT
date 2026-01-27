@@ -192,24 +192,24 @@ pg_pool = None
 def init_db_pool():
     global pg_pool
     if DATABASE_URL:
-                # Retry logic for Pool Initialization (Critical for Render Cold Start)
+        # Retry logic for Pool Initialization (Critical for Render Cold Start)
         for i in range(3): 
             try:
                 pg_pool = psycopg2.pool.SimpleConnectionPool(
-                     1, 5, # RAM SAVER: Reduced MAX connections from 20 to 5
-                     DATABASE_URL,
-                     connect_timeout=15,  # Increased to 15s
-                     sslmode='require',   # Force SSL for Supabase
-                     keepalives=1,
-                     keepalives_idle=30,
-                     keepalives_interval=10,
-                     keepalives_count=5
-                 )
-                 print(f"[SERVER] ✅ High-Performance Connection Pool Initialized (Attempt {i+1})")
-                 break
+                    1, 5, # RAM SAVER: Reduced MAX connections from 20 to 5
+                    DATABASE_URL,
+                    connect_timeout=15,  # Increased to 15s
+                    sslmode='require',   # Force SSL for Supabase
+                    keepalives=1,
+                    keepalives_idle=30,
+                    keepalives_interval=10,
+                    keepalives_count=5
+                )
+                print(f"[SERVER] ✅ High-Performance Connection Pool Initialized (Attempt {i+1})")
+                break
             except Exception as e:
-                 print(f"[SERVER] ⚠️ Pool Init Warning (Attempt {i+1}): {e}")
-                 time.sleep(5) # Longer backoff
+                print(f"[SERVER] ⚠️ Pool Init Warning (Attempt {i+1}): {e}")
+                time.sleep(5) # Longer backoff
 
 # Initialize pool on startup
 init_db_pool()
@@ -224,7 +224,7 @@ def get_db_connection():
                 if conn:
                     return conn, 'postgres'
             except Exception as e:
-                 print(f"[POOL] ⚠️ Pool Empty/Closed, trying fallback: {e}")
+                print(f"[POOL] ⚠️ Pool Empty/Closed, trying fallback: {e}")
         
         # Fallback (Should rarely happen)
         if DATABASE_URL:
@@ -232,9 +232,9 @@ def get_db_connection():
             conn = psycopg2.connect(DATABASE_URL, connect_timeout=15, sslmode='require')
             return conn, 'postgres'
         else:
-             conn = sqlite3.connect(DB_FILE, check_same_thread=False)
-             conn.row_factory = sqlite3.Row
-             return conn, 'sqlite'
+            conn = sqlite3.connect(DB_FILE, check_same_thread=False)
+            conn.row_factory = sqlite3.Row
+            return conn, 'sqlite'
     except Exception as e:
         print(f"[DB] Connection Error: {e}")
         return None, None
