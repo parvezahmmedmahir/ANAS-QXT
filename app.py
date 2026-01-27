@@ -192,23 +192,24 @@ pg_pool = None
 def init_db_pool():
     global pg_pool
     if DATABASE_URL:
-        # Retry logic for Pool Initialization (Critical for Render Cold Start)
+                # Retry logic for Pool Initialization (Critical for Render Cold Start)
         for i in range(3): 
             try:
                  pg_pool = psycopg2.pool.SimpleConnectionPool(
                      1, 20,
                      DATABASE_URL,
-                     connect_timeout=10,  # Increased to 10s for Cross-Region Latency
+                     connect_timeout=15,  # Increased to 15s
+                     sslmode='require',   # Force SSL for Supabase
                      keepalives=1,
-                     keepalives_idle=5,
-                     keepalives_interval=2,
-                     keepalives_count=2
+                     keepalives_idle=30,
+                     keepalives_interval=10,
+                     keepalives_count=5
                  )
                  print(f"[SERVER] ✅ High-Performance Connection Pool Initialized (Attempt {i+1})")
                  break
             except Exception as e:
                  print(f"[SERVER] ⚠️ Pool Init Warning (Attempt {i+1}): {e}")
-                 time.sleep(2)
+                 time.sleep(5) # Longer backoff
 
 # Initialize pool on startup
 init_db_pool()
@@ -227,8 +228,8 @@ def get_db_connection():
         
         # Fallback (Should rarely happen)
         if DATABASE_URL:
-            # RELAXED TIMEOUT: 3s was too fast for Supabase India latency
-            conn = psycopg2.connect(DATABASE_URL, connect_timeout=10)
+            # RELAXED TIMEOUT: 15s + SSL
+            conn = psycopg2.connect(DATABASE_URL, connect_timeout=15, sslmode='require')
             return conn, 'postgres'
         else:
              conn = sqlite3.connect(DB_FILE, check_same_thread=False)
