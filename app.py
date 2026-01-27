@@ -197,7 +197,7 @@ def init_db_pool():
         for i in range(3): 
             try:
                 pg_pool = psycopg2.pool.SimpleConnectionPool(
-                    1, 15, # Optimized Pool size for high-concurrency (Max 15)
+                    1, 3, # RAM SAVER: Reduced MAX connections to 3 for Render Free Tier
                     DATABASE_URL,
                     connect_timeout=7,
                     sslmode='require',
@@ -206,7 +206,7 @@ def init_db_pool():
                     keepalives_interval=10,
                     keepalives_count=5
                 )
-                print(f"[SERVER] ✅ High-Performance Connection Pool Initialized (Attempt {i+1})")
+                print(f"[SERVER] ✅ Low-Memory Connection Pool Initialized (Attempt {i+1})")
                 break
             except Exception as e:
                 print(f"[SERVER] ⚠️ Pool Init Warning (Attempt {i+1}): {e}")
@@ -384,26 +384,22 @@ init_db()
 
 def update_system_status_to_db():
     """Background heartbeat to Supabase to prove API/WS are ONLINE"""
-    # Wait for data_feed to be initialized if called early
-    time.sleep(10)
+    time.sleep(15) # Wait for initial engine boot
     while True:
+        conn = None
+        db_type = None
         try:
             conn, db_type = get_db_connection()
             if conn:
                 cur = conn.cursor()
-                
-                # Check status
                 try:
                     q_ws_active = data_feed.quotex_ws.connected
                     f_ws_active = data_feed.forex_ws.connected
                     q_sid = data_feed.quotex_ws.sid if q_ws_active else "N/A"
                 except:
-                    q_ws_active = False
-                    f_ws_active = False
-                    q_sid = "N/A"
+                    q_ws_active, f_ws_active, q_sid = False, False, "N/A"
                 
                 av_status = "ONLINE" if os.getenv("ALPHA_VANTAGE_KEY") else "API_KEY_MISSING"
-
                 stats = [
                     ('QUOTEX_WS', 'ONLINE' if q_ws_active else 'OFFLINE', f"SID: {q_sid}"),
                     ('FOREX_WS', 'ONLINE' if f_ws_active else 'OFFLINE', "WebSocket Stream Active" if f_ws_active else "N/A"),
@@ -424,22 +420,14 @@ def update_system_status_to_db():
                             INSERT OR REPLACE INTO system_connectivity (service_name, status, details, last_heartbeat)
                             VALUES (?, ?, ?, datetime('now'))
                         """, (name, status, details))
-                
                 conn.commit()
                 cur.close()
-                release_db_connection(conn, db_type)
         except Exception as e:
-            print(f"[HEARTBEAT] Supabase Sync Error: {e}")
-            try:
-                if 'cur' in locals(): cur.close()
-                if 'conn' in locals() and 'db_type' in locals(): release_db_connection(conn, db_type)
-            except: pass
-            # Ensure connection is released even on error
-            try:
-                if 'cur' in locals(): cur.close()
-                if 'conn' in locals() and 'db_type' in locals(): release_db_connection(conn, db_type)
-            except: pass
-        time.sleep(60) # Sync every 60 seconds
+            print(f"[HEARTBEAT] Sync Warning: {e}")
+        finally:
+            if conn:
+                release_db_connection(conn, db_type)
+        time.sleep(60)
 
 # Start the global synchronization heartbeat
 connector_thread = threading.Thread(target=update_system_status_to_db, daemon=True)
@@ -601,16 +589,18 @@ class MarketDataFeed:
              print("[FEED] Initializing Binolla Adapter...")
              self.adapters["BINOLLA"] = BinollaAdapter(BROKER_CONFIG["BINOLLA"])
 
-        # --- CORE WS CONNECTIVITY (User Request) ---
-        print("[FEED] ⚡ Establishing Direct WebSocket Connections...")
-        q_ws_status = self.quotex_ws.connect()
-        f_ws_status = self.forex_ws.connect()
-        
-        if q_ws_status:
-            print("[FEED] ✅ Quotex WS (ws2.market-qx.trade) Handshake Verified.")
-        if f_ws_status:
-            print("[FEED] ✅ Forex WS (ws.binaryws.com) Stream Active.")
-        # ---------------------------------------------
+        # Move WS connectivity to a background thread to prevent blocking Gunicorn boot
+        def start_ws_async():
+            print("[FEED] ⚡ Establishing Direct WebSocket Connections (Async)...")
+            try:
+                self.quotex_ws.connect()
+                self.forex_ws.connect()
+                print("[FEED] ✅ WebSocket Handshakes Backgrounded.")
+            except Exception as e:
+                print(f"[FEED] ⚠️  Background WS Init Error: {e}")
+
+        ws_init_thread = threading.Thread(target=start_ws_async, daemon=True)
+        ws_init_thread.start()
 
         # Try to connect asynchronously
         self.connect_brokers()
