@@ -138,10 +138,12 @@ CORS(app, resources={r"/*": {"origins": "*"}})
 
 load_dotenv()
 
-# Unlimited Signal Generation Mode
+# Enterprise Scaling & Optimization
 REQUEST_LOG = defaultdict(list)
-RATE_LIMIT_WINDOW = 60  # seconds
-RATE_LIMIT_MAX = 5000   # Effectively UNLIMITED for users
+LICENSE_CACHE = {} # Cache for verified keys: {key:device: (timestamp, status, category, expiry)}
+CACHE_TTL = 300   # 5 Minutes cache to handle 1000+ concurrent users efficiently
+RATE_LIMIT_WINDOW = 60
+RATE_LIMIT_MAX = 5000
 
 @app.route('/')
 def serve_index():
@@ -196,17 +198,17 @@ def init_db_pool():
         # Retry logic for Pool Initialization (Critical for Render Cold Start)
         for i in range(3): 
             try:
-                pg_pool = psycopg2.pool.SimpleConnectionPool(
-                    1, 3, # RAM SAVER: Reduced MAX connections to 3 for Render Free Tier
+                pg_pool = psycopg2.pool.ThreadedConnectionPool(
+                    1, 10, # Threaded Pool: Support up to 10 concurrent threads
                     DATABASE_URL,
-                    connect_timeout=7,
+                    connect_timeout=10,
                     sslmode='require',
                     keepalives=1,
-                    keepalives_idle=20, # Aggressive cleanup of idle connections
+                    keepalives_idle=30,
                     keepalives_interval=10,
                     keepalives_count=5
                 )
-                print(f"[SERVER] ✅ Low-Memory Connection Pool Initialized (Attempt {i+1})")
+                print(f"[SERVER] ✅ High-Concurrency Threaded Pool Initialized (Attempt {i+1})")
                 break
             except Exception as e:
                 print(f"[SERVER] ⚠️ Pool Init Warning (Attempt {i+1}): {e}")
@@ -1180,59 +1182,69 @@ def check_device_sync():
 def verify_access(key, device_id):
     """
     Returns (bool, error_message or None)
-    Used by /predict to ensure every signal request is authorized.
+    Uses high-speed in-memory caching to support 1000+ concurrent users.
     """
     if not key or not device_id:
         return False, "MISSING_CREDENTIALS"
 
+    clean_key = key.strip().upper()
+    cache_id = f"{clean_key}:{device_id}"
+    now = time.time()
+
+    # 1. High-Performance Cache Lookup
+    if cache_id in LICENSE_CACHE:
+        ts, status, cached_device, expiry, category = LICENSE_CACHE[cache_id]
+        if now - ts < CACHE_TTL:
+            if status == 'BLOCKED': return False, "LICENSE_BLOCKED"
+            if status == 'PENDING' and category != 'OWNER': return False, "LICENSE_NOT_ACTIVATED"
+            # Expiry check (cached)
+            if expiry:
+               try:
+                   now_utc = datetime.datetime.utcnow().replace(tzinfo=None)
+                   if now_utc > expiry: return False, "LICENSE_EXPIRED"
+               except: pass
+            return True, None
+
+    # 2. Database Fallback (Only every 5 minutes per user)
     conn, db_type = get_db_connection()
     if not conn: 
         return False, "DATABASE_ERROR"
     
     try:
         cur = conn.cursor()
-        clean_key = key.strip().upper()
-        
-        # Fetch status, locked device, and category (crucial for bypass logic)
         query = "SELECT status, device_id, expiry_date, category FROM licenses WHERE UPPER(key_code)=%s" if db_type == 'postgres' else "SELECT status, device_id, expiry_date, category FROM licenses WHERE UPPER(key_code)=?"
         cur.execute(query, (clean_key,))
         row = cur.fetchone()
         cur.close()
         release_db_connection(conn, db_type)
         
-        if not row: 
-            return False, "INVALID_KEY"
+        if not row: return False, "INVALID_KEY"
             
         status, locked_device, expiry_date, category = row
 
-        # 1. State Verification
-        if status == 'BLOCKED': 
-            return False, "LICENSE_BLOCKED"
-        
-        if status == 'PENDING' and category != 'OWNER':
-            return False, "LICENSE_NOT_ACTIVATED"
-
-        # 2. Expiry Check
+        # Parse Expiry for Cache
+        parsed_exp = None
         if expiry_date:
             try:
-                now_utc = datetime.datetime.utcnow().replace(tzinfo=None)
                 if isinstance(expiry_date, str):
-                    try: exp = datetime.datetime.strptime(expiry_date, "%Y-%m-%d %H:%M:%S")
-                    except: exp = datetime.datetime.fromisoformat(expiry_date.replace('Z', '+00:00')).replace(tzinfo=None)
+                    try: parsed_exp = datetime.datetime.strptime(expiry_date, "%Y-%m-%d %H:%M:%S")
+                    except: parsed_exp = datetime.datetime.fromisoformat(expiry_date.replace('Z', '+00:00')).replace(tzinfo=None)
                 else:
-                    exp = expiry_date.replace(tzinfo=None) if hasattr(expiry_date, 'replace') else expiry_date
-                
-                if now_utc > exp:
-                    return False, "LICENSE_EXPIRED"
-            except:
-                pass
+                    parsed_exp = expiry_date.replace(tzinfo=None)
+            except: pass
+
+        # Update Cache
+        LICENSE_CACHE[cache_id] = (now, status, locked_device, parsed_exp, category)
+
+        # 3. Enforcement
+        if status == 'BLOCKED': return False, "LICENSE_BLOCKED"
+        if status == 'PENDING' and category != 'OWNER': return False, "LICENSE_NOT_ACTIVATED"
+        if parsed_exp and datetime.datetime.utcnow().replace(tzinfo=None) > parsed_exp:
+            return False, "LICENSE_EXPIRED"
             
-        # 3. Hardware Lock Enforcement
         if locked_device and locked_device.strip() and locked_device != "None":
-            if locked_device != device_id:
-                if category != "OWNER":
-                   print(f"[SECURITY] Access Denied: Hard-lock Mismatch. Key: {clean_key} | Bound: {locked_device} | Attacker: {device_id}")
-                   return False, "DEVICE_MISMATCH"
+            if locked_device != device_id and category != "OWNER":
+                return False, "DEVICE_MISMATCH"
             
         return True, None
     except Exception as e:
