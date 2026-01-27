@@ -192,18 +192,23 @@ pg_pool = None
 def init_db_pool():
     global pg_pool
     if DATABASE_URL:
-        try:
-             pg_pool = psycopg2.pool.SimpleConnectionPool(
-                 1, 20, # Min 1, Max 20 connections
-                 DATABASE_URL,
-                 keepalives=1,
-                 keepalives_idle=5,
-                 keepalives_interval=2,
-                 keepalives_count=2
-             )
-             print("[SERVER] ✅ High-Performance Connection Pool Initialized")
-        except Exception as e:
-             print(f"[SERVER] ❌ Pool Init Failed: {e}")
+        # Retry logic for Pool Initialization (Critical for Render Cold Start)
+        for i in range(3): 
+            try:
+                 pg_pool = psycopg2.pool.SimpleConnectionPool(
+                     1, 20,
+                     DATABASE_URL,
+                     connect_timeout=10,  # Increased to 10s for Cross-Region Latency
+                     keepalives=1,
+                     keepalives_idle=5,
+                     keepalives_interval=2,
+                     keepalives_count=2
+                 )
+                 print(f"[SERVER] ✅ High-Performance Connection Pool Initialized (Attempt {i+1})")
+                 break
+            except Exception as e:
+                 print(f"[SERVER] ⚠️ Pool Init Warning (Attempt {i+1}): {e}")
+                 time.sleep(2)
 
 # Initialize pool on startup
 init_db_pool()
@@ -213,13 +218,17 @@ def get_db_connection():
     try:
         if pg_pool:
             # Get connection from pool (Instant)
-            conn = pg_pool.getconn()
-            if conn:
-                return conn, 'postgres'
+            try:
+                conn = pg_pool.getconn()
+                if conn:
+                    return conn, 'postgres'
+            except Exception as e:
+                 print(f"[POOL] ⚠️ Pool Empty/Closed, trying fallback: {e}")
         
         # Fallback (Should rarely happen)
         if DATABASE_URL:
-            conn = psycopg2.connect(DATABASE_URL, connect_timeout=3)
+            # RELAXED TIMEOUT: 3s was too fast for Supabase India latency
+            conn = psycopg2.connect(DATABASE_URL, connect_timeout=10)
             return conn, 'postgres'
         else:
              conn = sqlite3.connect(DB_FILE, check_same_thread=False)
