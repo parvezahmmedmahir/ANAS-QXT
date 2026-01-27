@@ -195,8 +195,8 @@ def init_db_pool():
                 # Retry logic for Pool Initialization (Critical for Render Cold Start)
         for i in range(3): 
             try:
-                 pg_pool = psycopg2.pool.SimpleConnectionPool(
-                     1, 20,
+                pg_pool = psycopg2.pool.SimpleConnectionPool(
+                     1, 5, # RAM SAVER: Reduced MAX connections from 20 to 5
                      DATABASE_URL,
                      connect_timeout=15,  # Increased to 15s
                      sslmode='require',   # Force SSL for Supabase
