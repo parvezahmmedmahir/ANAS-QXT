@@ -239,8 +239,6 @@ def get_db_connection():
         # Deferred Initialization: Ensures App boots instantly on Render
         if DATABASE_URL and pg_pool is None:
             init_db_pool()
-            # Verify tables once after pooler is ready
-            ensure_tables_ready()
             
         if pg_pool:
             # Try to get a valid connection from the pool (max 2 attempts)
@@ -455,11 +453,59 @@ def init_db():
     except Exception as e:
         print(f"[DB] Init Error: {e}")
 
-# init_db() removed from global scope to support instant boot.
-# It will be called lazily by get_db_connection()
+init_db()
 
-# Background Heartbeat removed to support Render 'Auto-Sleep' and reduce memory footprint.
-# This ensures the server is only active when users are using it.
+def update_system_status_to_db():
+    """Background heartbeat to Supabase to prove API/WS are ONLINE"""
+    time.sleep(15) # Wait for initial engine boot
+    while True:
+        conn = None
+        db_type = None
+        try:
+            conn_res = get_db_connection()
+            if conn_res and conn_res[0]:
+                conn, db_type = conn_res
+                cur = conn.cursor()
+                try:
+                    q_ws_active = data_feed.quotex_ws.connected
+                    f_ws_active = data_feed.forex_ws.connected
+                    q_sid = data_feed.quotex_ws.sid if q_ws_active else "N/A"
+                except:
+                    q_ws_active, f_ws_active, q_sid = False, False, "N/A"
+                
+                av_status = "ONLINE" if os.getenv("ALPHA_VANTAGE_KEY") else "API_KEY_MISSING"
+                stats = [
+                    ('QUOTEX_WS', 'ONLINE' if q_ws_active else 'OFFLINE', f"SID: {q_sid}"),
+                    ('FOREX_WS', 'ONLINE' if f_ws_active else 'OFFLINE', "WebSocket Stream Active" if f_ws_active else "N/A"),
+                    ('ALPHA_VANTAGE', av_status, "Alpha Vantage Real-Market API"),
+                    ('BACKEND_HEARTBEAT', 'ONLINE', datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+                ]
+
+                for name, status, details in stats:
+                    if db_type == 'postgres':
+                        cur.execute("""
+                            INSERT INTO system_connectivity (service_name, status, details, last_heartbeat)
+                            VALUES (%s, %s, %s, CURRENT_TIMESTAMP)
+                            ON CONFLICT (service_name) DO UPDATE 
+                            SET status = EXCLUDED.status, details = EXCLUDED.details, last_heartbeat = CURRENT_TIMESTAMP
+                        """, (name, status, details))
+                    else:
+                        cur.execute("""
+                            INSERT OR REPLACE INTO system_connectivity (service_name, status, details, last_heartbeat)
+                            VALUES (?, ?, ?, datetime('now'))
+                        """, (name, status, details))
+                conn.commit()
+                cur.close()
+        except Exception as e:
+            print(f"[HEARTBEAT] Sync Warning: {e}")
+        finally:
+            if conn:
+                release_db_connection(conn, db_type)
+        time.sleep(60)
+
+# Start the global synchronization heartbeat
+connector_thread = threading.Thread(target=update_system_status_to_db, daemon=True)
+connector_thread.start()
 
 # --- MARKET DATA FEED (ENHANCED) ---
 class LiveMarketData:
@@ -600,11 +646,11 @@ class MarketDataFeed:
         self.quotex_ws = QuotexWSAdapter()
         self.forex_ws = ForexWSAdapter()
         
-        # Initialize Adapters (Lazy/Lightweight)
-        if QuotexWSAdapter:
-            print("[FEED] Initializing Quotex Fast-Stream Adapter...")
-            self.adapters["QUOTEX"] = QuotexWSAdapter(BROKER_CONFIG.get("QUOTEX", {}))
-        
+        # Initialize Brokers based on Config
+        if QuotexAdapter and BROKER_CONFIG.get("QUOTEX"):
+            print("[FEED] Initializing Quotex Adapter...")
+            self.adapters["QUOTEX"] = QuotexAdapter(BROKER_CONFIG["QUOTEX"])
+            
         if IQOptionAdapter and BROKER_CONFIG.get("IQOPTION"):
             print("[FEED] Initializing IQ Option Adapter...")
             self.adapters["IQOPTION"] = IQOptionAdapter(BROKER_CONFIG["IQOPTION"])
@@ -691,21 +737,17 @@ class MarketDataFeed:
 
         for name in ordered:
             adapter = self.adapters.get(name)
-            getter = getattr(adapter, "get_candles", None)
-            if not adapter or not getter:
+            if not adapter:
                 continue
-            
-            # CRITICAL ENFORCEMENT: Broker Timeout Protection
+            getter = getattr(adapter, "get_candles", None)
+            if not getter:
+                continue
             try:
-                if not getattr(adapter, 'connected', True):
-                    continue
-
                 live = getter(asset, tf_seconds, 50)
                 if live:
                     return live
             except Exception as e:
-                print(f"[FEED] {name} fetch timeout/failed: {e}")
-                continue
+                print(f"[FEED] {name} candle fetch failed: {e}")
 
         # --- STOCHASTIC SIMULATION FALLBACK (Pro Sync) ---
         # If real data fails, we generate a high-fidelity synchronized stream.
@@ -750,45 +792,20 @@ class MarketDataFeed:
             
         return candles[::-1]
 
+data_feed = MarketDataFeed()
 reversal_engine = ReversalEngine() if ReversalEngine else None
-_data_feed = None
-_engine = None
-_enhanced_engine = None
-_init_done = False
 
-def get_system_feed():
-    global _data_feed
-    if _data_feed is None:
-        print("[SYSTEM] ⚡ Initializing Global Data Feed (Lazy)...")
-        _data_feed = MarketDataFeed()
-    return _data_feed
-
-def get_system_engine():
-    global _engine
-    if _engine is None:
-        _engine = InstitutionalSignalEngine()
-    return _engine
-
-def get_enhanced_engine():
-    global _enhanced_engine
-    if _enhanced_engine is None and ENHANCED_ENGINE_AVAILABLE:
-        print("[SYSTEM] ⚡ Initializing Pro Engine v3.0 (Lazy)...")
-        _enhanced_engine = EnhancedEngine()
-    return _enhanced_engine
-
-def ensure_tables_ready():
-    global _init_done
-    if not _init_done:
-        try:
-            init_db()
-            _init_done = True
-        except Exception as e:
-            print(f"[DB] Ready Check Error: {e}")
+# Initialize Enhanced Engine if available
+if ENHANCED_ENGINE_AVAILABLE:
+    enhanced_engine = EnhancedEngine()
+    print("[ENGINE] ✅ Pro Engine v3.0 Loaded (Wick Rejection + Stochastic Sync)")
+else:
+    enhanced_engine = None
+    print("[ENGINE] ⚠️  Fallback Engine Active")
 
 # --- ADVANCED SIGNAL STRATEGIES ---
 class InstitutionalSignalEngine:
     def __init__(self):
-        # reversal_engine is initialized at module level (fast)
         self.reversal_engine = reversal_engine
 
     def calculate_rsi(self, prices, period=14):
@@ -1364,16 +1381,12 @@ def predict():
             }), 403
         # ----------------------------
         
-        feed = get_system_feed()
-        enhanced_e = get_enhanced_engine()
-        standard_e = get_system_engine()
-        
-        candles = feed.get_candles(market, timeframe)
+        candles = data_feed.get_candles(market, timeframe)
         
         # --- WS & DATA VALIDATION (High-Precision Rule) ---
         # Check WS health
-        quotex_ws_active = feed.quotex_ws.connected or (broker == "QUOTEX" and feed.adapters.get("QUOTEX") and feed.adapters["QUOTEX"].connected)
-        forex_ws_active = feed.forex_ws.connected
+        quotex_ws_active = data_feed.quotex_ws.connected or (broker == "QUOTEX" and data_feed.adapters.get("QUOTEX") and data_feed.adapters["QUOTEX"].connected)
+        forex_ws_active = data_feed.forex_ws.connected
         
         if not candles:
             print(f"[PREDICT] Aborting: No real-time data for {market}")
@@ -1401,13 +1414,13 @@ def predict():
             utc_now = datetime.datetime.utcnow()
             entry_time_calculated = (utc_now + datetime.timedelta(minutes=1)).strftime("%H:%M")
 
-        if enhanced_e:
-            direction, conf, strategy = enhanced_e.analyze(broker, market, timeframe, candles=candles, entry_time=entry_time_calculated)
+        if enhanced_engine:
+            direction, conf, strategy = enhanced_engine.analyze(broker, market, timeframe, candles=candles, entry_time=entry_time_calculated)
             
             # Get win rate estimate
-            win_rate = enhanced_e.get_win_rate(market)
+            win_rate = enhanced_engine.get_win_rate(market)
         else:
-            direction, conf = standard_e.analyze(broker, market, timeframe, candles=candles, entry_time=entry_time_calculated)
+            direction, conf = engine.analyze(broker, market, timeframe, candles=candles, entry_time=entry_time_calculated)
             strategy = "STANDARD_ANALYSIS"
             win_rate = 0
         
@@ -1466,21 +1479,18 @@ def home():
 
 @app.route('/test')
 def test():
-    feed = get_system_feed()
-    enhanced_e = get_enhanced_engine()
-    
     # Return connectivity status of brokers
     broker_status = {name: (adapter.connected if hasattr(adapter, 'connected') else "Unknown") 
-                     for name, adapter in feed.adapters.items()} if feed else {}
+                     for name, adapter in data_feed.adapters.items()} if data_feed else {}
     conn_res = get_db_connection()
     db_type = conn_res[1] if conn_res else "None"
     return jsonify({
         "status": "ONLINE", 
         "version": "4.0-ENT-ENHANCED",
-        "engine": "Enhanced v2.0" if enhanced_e else "Standard",
+        "engine": "Enhanced v2.0" if enhanced_engine else "Standard",
         "db_mode": db_type,
         "brokers": broker_status,
-        "active_broker": feed.active_broker if feed else None
+        "active_broker": data_feed.active_broker if data_feed else None
     })
 
 @app.route('/api/win_rate', methods=['GET'])
@@ -1711,16 +1721,10 @@ def collect_telemetry():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 if __name__ == '__main__':
-    # Use 5000 as default, ignore DB_PORT from .env if present
-    default_port = 5000
-    port = int(os.environ.get('PORT', default_port))
-    
-    # Safety: If port is 6543 (DB port), force it back to 5000 unless specified
-    if port == 6543: port = 5000
-    
+    port = int(os.environ.get('PORT', 5000))
     print("="*60)
     print(" QUANTUM X PRO - ENTERPRISE SERVER ")
-    print(" Status: ONLINE | Mode: ULTRA-LIGHT ")
+    print(" Connected to Global Data Feeds: [QUOTEX, IQ, POCKET, BINOLLA]")
     print(f" Listening on Port {port}...")
     print("="*60)
     app.run(host='0.0.0.0', port=port, debug=False)
