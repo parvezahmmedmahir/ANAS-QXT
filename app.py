@@ -197,7 +197,7 @@ def init_db_pool():
     global pg_pool
     if DATABASE_URL:
         db_url = DATABASE_URL
-        print(f"[SERVER] 🔌 Connecting to Database Port: {DB_PORT} (Pooler)")
+        print(f"[SERVER] Connecting to Database (Port: {DB_PORT})")
 
         # Retry logic for Pool Initialization
         for i in range(2): 
@@ -210,22 +210,23 @@ def init_db_pool():
                     keepalives=1,
                     keepalives_idle=30
                 )
-                print(f"[SERVER] ✅ Database Connection Active")
+                print(f"[SERVER] Database Connection Pool Created")
                 break
             except Exception as e:
-                print(f"[SERVER] ⚠️ Pooler Init Warning (6543): {e}")
+                print(f"[SERVER] Pooler Init Warning (6543): {e}")
+                
                 # SILENT AUTO-SWITCH: If 6543 fails, try 5432 (Direct) immediately
                 if "timeout expired" in str(e).lower() or i == 1:
                     try:
-                        print(f"[SERVER] 🔄 Switching to Direct Connection (5432) for stability...")
+                        print(f"[SERVER] Switching to Direct Connection (5432) for stability...")
                         direct_url = db_url.replace("aws-1-ap-south-1.pooler.supabase.com", "db.cxflxjgtlwzxoltfphwt.supabase.co")
                         direct_url = direct_url.replace(":6543", ":5432")
                         direct_url = direct_url.replace("postgres.cxflxjgtlwzxoltfphwt", "postgres")
                         pg_pool = psycopg2.pool.ThreadedConnectionPool(1, 10, direct_url, connect_timeout=10, sslmode='require')
-                        print(f"[SERVER] ✅ Direct Handshake Successful (Port: 5432)")
+                        print(f"[SERVER] Direct Handshake Successful (Port: 5432)")
                         break
                     except Exception as e2:
-                        print(f"[SERVER] ❌ Direct Connection also failed: {e2}")
+                        print(f"[SERVER] Direct Connection also failed: {e2}")
                 
                 if i < 1: time.sleep(1)
 
@@ -235,64 +236,66 @@ def init_db_pool():
 def get_db_connection():
     """Fetches a connection from the high-speed pool and verifies it's alive"""
     global pg_pool
+    # Initialize these to ensure we always return a tuple
+    db_conn = None
+    db_mode = None
+    
     try:
-        # Deferred Initialization: Ensures App boots instantly on Render
+        # 1. Deferred Pool Initialization
         if DATABASE_URL and pg_pool is None:
-            init_db_pool()
-            
+            try:
+                init_db_pool()
+            except Exception as e:
+                print(f"[DB] init_db_pool fatal error: {e}")
+
+        # 2. Try to get connection from Pool
         if pg_pool:
-            # Try to get a valid connection from the pool (max 2 attempts)
             for _ in range(2):
                 try:
                     conn = pg_pool.getconn()
-                    if conn:
-                        # Safety check: Verify connection is alive
-                        if conn.closed == 0:
-                            try:
-                                with conn.cursor() as cur:
-                                    cur.execute("SELECT 1")
-                                return conn, 'postgres'
-                            except:
-                                # Connection is dead, discard it and try again
-                                print("[POOL] ⚠️ Dead connection detected in pool, discarding...")
-                                try:
-                                    pg_pool.putconn(conn, close=True)
-                                except:
-                                    try: conn.close()
-                                    except: pass
-                        else:
-                            try:
-                                pg_pool.putconn(conn, close=True)
-                            except:
-                                try: conn.close()
-                                except: pass
+                    if conn and conn.closed == 0:
+                        try:
+                            with conn.cursor() as cur:
+                                cur.execute("SELECT 1")
+                            return conn, 'postgres'
+                        except:
+                            print("[POOL] Discarding dead connection...")
+                            try: pg_pool.putconn(conn, close=True)
+                            except: pass
                 except Exception as e:
                     print(f"[POOL] Connection fetch warning: {e}")
                     break
-        
-        # Fallback: Direct connection (Emergency)
+
+        # 3. Cloud Fallback (Direct Connection)
         if DATABASE_URL:
-            db_url = DATABASE_URL
+            # Try Port 6543 (Pooler)
             try:
-                # Try Port 6543 first, then 5432
+                conn = psycopg2.connect(DATABASE_URL, connect_timeout=10, sslmode='require')
+                return conn, 'postgres'
+            except Exception as e:
+                print(f"[DB] Cloud Fallback 6543 failed: {e}")
+                
+                # Try Port 5432 (Direct) - Correct mapping
                 try:
-                    conn = psycopg2.connect(db_url, connect_timeout=5, sslmode='require')
-                    return conn, 'postgres'
-                except:
-                    print("[DB] Fallback 6543 failed, trying Direct 5432...")
-                    direct_url = db_url.replace("aws-1-ap-south-1.pooler.supabase.com", "db.cxflxjgtlwzxoltfphwt.supabase.co")
+                    print("[DB] Attempting Direct Connection 5432...")
+                    direct_url = DATABASE_URL.replace("aws-1-ap-south-1.pooler.supabase.com", "db.cxflxjgtlwzxoltfphwt.supabase.co")
                     direct_url = direct_url.replace(":6543", ":5432")
                     direct_url = direct_url.replace("postgres.cxflxjgtlwzxoltfphwt", "postgres")
-                    conn = psycopg2.connect(direct_url, connect_timeout=5, sslmode='require')
+                    conn = psycopg2.connect(direct_url, connect_timeout=10, sslmode='require')
                     return conn, 'postgres'
-            except Exception as e:
-                print(f"[DB] All fallback connections failed: {e}")
-        else:
-            conn = sqlite3.connect(DB_FILE, check_same_thread=False)
-            conn.row_factory = sqlite3.Row
-            return conn, 'sqlite'
+                except Exception as e2:
+                    print(f"[DB] Cloud Fallback 5432 failed: {e2}")
+
+        # 4. Final Fallback: Local SQLite (Guaranteed to work)
+        print("[DB] FALLBACK: Using Local SQLite for service continuity")
+        db_conn = sqlite3.connect(DB_FILE, check_same_thread=False)
+        db_conn.row_factory = sqlite3.Row
+        db_mode = 'sqlite'
+        return db_conn, db_mode
+        
     except Exception as e:
-        print(f"[DB] Connection Error: {e}")
+        print(f"[DB] Fatal connection error: {e}")
+        # Always return a tuple even in fatal error
         return None, None
 
 def release_db_connection(conn, mode):
