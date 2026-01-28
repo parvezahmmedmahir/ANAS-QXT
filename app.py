@@ -218,7 +218,9 @@ def init_db_pool():
                 if "timeout expired" in str(e).lower() or i == 1:
                     try:
                         print(f"[SERVER] 🔄 Switching to Direct Connection (5432) for stability...")
-                        direct_url = db_url.replace(":6543", ":5432").replace("pooler.supabase.com", "cxflxjgtlwzxoltfphwt.supabase.co")
+                        direct_url = db_url.replace("aws-1-ap-south-1.pooler.supabase.com", "db.cxflxjgtlwzxoltfphwt.supabase.co")
+                        direct_url = direct_url.replace(":6543", ":5432")
+                        direct_url = direct_url.replace("postgres.cxflxjgtlwzxoltfphwt", "postgres")
                         pg_pool = psycopg2.pool.ThreadedConnectionPool(1, 10, direct_url, connect_timeout=10, sslmode='require')
                         print(f"[SERVER] ✅ Direct Handshake Successful (Port: 5432)")
                         break
@@ -278,7 +280,9 @@ def get_db_connection():
                     return conn, 'postgres'
                 except:
                     print("[DB] Fallback 6543 failed, trying Direct 5432...")
-                    direct_url = db_url.replace(":6543", ":5432").replace("pooler.supabase.com", "cxflxjgtlwzxoltfphwt.supabase.co")
+                    direct_url = db_url.replace("aws-1-ap-south-1.pooler.supabase.com", "db.cxflxjgtlwzxoltfphwt.supabase.co")
+                    direct_url = direct_url.replace(":6543", ":5432")
+                    direct_url = direct_url.replace("postgres.cxflxjgtlwzxoltfphwt", "postgres")
                     conn = psycopg2.connect(direct_url, connect_timeout=5, sslmode='require')
                     return conn, 'postgres'
             except Exception as e:
