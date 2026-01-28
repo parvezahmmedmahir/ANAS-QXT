@@ -701,6 +701,37 @@
       transform: translateY(-2px);
     }
 
+    .paste-btn {
+      position: absolute;
+      right: 15px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      color: #fff;
+      padding: 6px 12px;
+      border-radius: 4px;
+      font-size: 0.65rem;
+      font-family: var(--font-tech);
+      letter-spacing: 1px;
+      cursor: pointer;
+      z-index: 10;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .paste-btn:hover {
+      background: rgba(255, 255, 255, 0.2);
+      border-color: rgba(255, 255, 255, 0.4);
+      box-shadow: 0 0 10px rgba(255, 255, 255, 0.2);
+    }
+
+    .paste-btn i {
+      font-size: 0.75rem;
+    }
+
     .input-glow {
       position: absolute;
       inset: 0;
@@ -1295,7 +1326,10 @@
           </label>
           <div class="premium-input-container">
             <input id="license-key" type="password" placeholder="XXXX-XXXX-XXXX-XXXX" class="input premium-input"
-              maxlength="32" autocomplete="off" />
+              maxlength="32" autocomplete="off" style="padding-right: 80px;" />
+            <button class="paste-btn" id="paste-license-btn" type="button">
+              <i class="fa-solid fa-paste"></i> PASTE
+            </button>
             <div class="input-glow"></div>
           </div>
           <div class="input-hint">
@@ -1453,6 +1487,28 @@
 
         // Background System Check
         checkSystemDB();
+
+        // Paste Button Listener
+        const pasteBtn = document.getElementById('paste-license-btn');
+        if (pasteBtn) {
+          pasteBtn.addEventListener('click', async () => {
+            try {
+              const text = await navigator.clipboard.readText();
+              if (text) {
+                licenseInput.value = text.trim();
+                licenseInput.focus();
+                // Brief flash to show it worked
+                pasteBtn.style.background = 'rgba(34, 197, 94, 0.3)';
+                setTimeout(() => { pasteBtn.style.background = 'rgba(255, 255, 255, 0.1)'; }, 300);
+              }
+            } catch (err) {
+              console.warn("Clipboard access denied", err);
+              // Fallback: briefly change button style to show failure
+              pasteBtn.style.background = 'rgba(239, 68, 68, 0.3)';
+              setTimeout(() => { pasteBtn.style.background = 'rgba(255, 255, 255, 0.1)'; }, 300);
+            }
+          });
+        }
       });
 
       async function syncDeviceHardware() {

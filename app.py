@@ -195,18 +195,8 @@ pg_pool = None
 def init_db_pool():
     global pg_pool
     if DATABASE_URL:
-        # MASTER FIX: Aggressively convert 'pooler' URLs to 'Direct' URLs
-        # This solves the Port 6543 timeout issue on Render
         db_url = DATABASE_URL
-        if "pooler.supabase.com" in db_url:
-            # Extract project ID and rebuild as direct host
-            project_id = "cxflxjgtlwzxoltfphwt"
-            # Switch to Direct Host and Direct Port
-            db_url = db_url.replace("aws-1-ap-south-1.pooler.supabase.com", f"db.{project_id}.supabase.co")
-            db_url = db_url.replace(":6543", ":5432")
-            # Switch from Pooler User to Direct User (if present)
-            db_url = db_url.replace(f"postgres.{project_id}", "postgres")
-            print(f"[SERVER] 🛡️ EMERGENCY REDIRECT: Pooler (6543) -> Direct (5432) for stability")
+        print(f"[SERVER] 🔌 Connecting to Database Port: {PORT}")
 
         # Retry logic for Pool Initialization
         for i in range(3): 
@@ -219,7 +209,7 @@ def init_db_pool():
                     keepalives=1,
                     keepalives_idle=30
                 )
-                print(f"[SERVER] ✅ Final Database Handshake Successful (Direct: 5432)")
+                print(f"[SERVER] ✅ Database Connection Active (Port: {PORT})")
                 break
             except Exception as e:
                 print(f"[SERVER] ⚠️ Pool Init Warning (Attempt {i+1}): {e}")
@@ -263,10 +253,11 @@ def get_db_connection():
         
         # Fallback: Direct connection (Emergency)
         if DATABASE_URL:
-            # Try switching port if we are hitting timeouts
-            db_url = DATABASE_URL.replace(":6543", ":5432") if ":6543" in DATABASE_URL else DATABASE_URL
-            conn = psycopg2.connect(db_url, connect_timeout=10, sslmode='require')
-            return conn, 'postgres'
+            try:
+                conn = psycopg2.connect(DATABASE_URL, connect_timeout=10, sslmode='require')
+                return conn, 'postgres'
+            except Exception as e:
+                print(f"[DB] Fallback connection failed: {e}")
         else:
             conn = sqlite3.connect(DB_FILE, check_same_thread=False)
             conn.row_factory = sqlite3.Row
