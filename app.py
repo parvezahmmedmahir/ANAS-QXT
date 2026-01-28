@@ -56,7 +56,7 @@ def get_geo_info(ip):
         # Returns: country, region, city, timezone, isp, lat, lon, zip, org
         resp = requests.get(
             f"http://ip-api.com/json/{ip}?fields=status,message,country,countryCode,region,regionName,city,zip,lat,lon,timezone,isp,org,as,query",
-            timeout=5
+            timeout=8
         )
         
         if resp.status_code == 200:
@@ -339,7 +339,10 @@ def init_db():
                     usage_count INTEGER DEFAULT 0,
                     last_access_date TIMESTAMP,
                     expiry_date TIMESTAMP,
-                    activation_date TIMESTAMP
+                    activation_date TIMESTAMP,
+                    country TEXT,
+                    city TEXT,
+                    timezone_geo TEXT
                 )
             """)
             # 2. Win Rate Tracking
@@ -417,7 +420,10 @@ def init_db():
                     usage_count INTEGER DEFAULT 0,
                     last_access_date TIMESTAMP,
                     expiry_date TIMESTAMP,
-                    activation_date TIMESTAMP
+                    activation_date TIMESTAMP,
+                    country TEXT,
+                    city TEXT,
+                    timezone_geo TEXT
                 )
             """)
             # 2. Tracks Columns for licenses
@@ -426,6 +432,9 @@ def init_db():
             if 'last_access_date' not in cols: cur.execute("ALTER TABLE licenses ADD COLUMN last_access_date TIMESTAMP")
             if 'activation_date' not in cols: cur.execute("ALTER TABLE licenses ADD COLUMN activation_date TIMESTAMP")
             if 'usage_count' not in cols: cur.execute("ALTER TABLE licenses ADD COLUMN usage_count INTEGER DEFAULT 0")
+            if 'country' not in cols: cur.execute("ALTER TABLE licenses ADD COLUMN country TEXT")
+            if 'city' not in cols: cur.execute("ALTER TABLE licenses ADD COLUMN city TEXT")
+            if 'timezone_geo' not in cols: cur.execute("ALTER TABLE licenses ADD COLUMN timezone_geo TEXT")
 
             # 3. User Sessions
             cur.execute("""
@@ -1138,16 +1147,8 @@ def validate_license():
                         ip_address=%s
                     WHERE UPPER(key_code)=%s
                 """, (ip_addr, clean_key))
-            else:
-                cur.execute("""
-                    UPDATE licenses SET 
-                        last_access_date=datetime('now'),
-                        usage_count=COALESCE(usage_count, 0) + 1,
-                        ip_address=?
-                    WHERE UPPER(key_code)=?
-                """, (ip_addr, clean_key))
         
-        # 6. Log to user_sessions table
+        conn.commit()
         try:
             timezone_str = data.get('timezone', 'Unknown')
             screen_str = data.get('screen', '0x0')
@@ -1204,8 +1205,12 @@ def validate_license():
         print(f"[AUTH] Error during validation: {e}")
         return jsonify({"valid": False, "message": "Secure Server Validation Error"}), 500
     finally:
-        cur.close()
-        release_db_connection(conn, db_type)
+        try:
+            if 'cur' in locals() and cur: cur.close()
+        except: pass
+        try:
+            if 'conn' in locals() and conn: release_db_connection(conn, db_type)
+        except: pass
 
 @app.route('/api/check_device_sync', methods=['POST'])
 def check_device_sync():
@@ -1254,8 +1259,6 @@ def check_device_sync():
         
         if not row:
             print(f"[AUTH-SYNC] ❌ No ACTIVE license found for device: {device_id[:20]}...")
-            cur.close()
-            release_db_connection(conn, db_type)
             return jsonify({"valid": False, "message": "No active license found for this device"}), 200
             
         key, category, expiry_date, status, activation_date = row
@@ -1321,8 +1324,6 @@ def check_device_sync():
             cur.execute(update_q, (ip_addr, key))
         
         conn.commit()
-        cur.close()
-        release_db_connection(conn, db_type)
         
         print(f"[AUTH-SYNC] ✅ Auto-Login Verified: {key} | Device: {device_id[:20]}... | IP: {ip_addr}")
         return jsonify({
@@ -1336,8 +1337,12 @@ def check_device_sync():
         print(f"[AUTH] Device Sync Error: {e}")
         return jsonify({"valid": False}), 500
     finally:
-        if 'cur' in locals(): cur.close()
-        if 'conn' in locals() and 'db_type' in locals(): release_db_connection(conn, db_type)
+        try:
+            if 'cur' in locals() and cur: cur.close()
+        except: pass
+        try:
+            if 'conn' in locals() and conn: release_db_connection(conn, db_type)
+        except: pass
 
 def verify_access(key, device_id):
     """
