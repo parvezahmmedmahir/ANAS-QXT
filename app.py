@@ -218,18 +218,39 @@ def init_db_pool():
 init_db_pool()
 
 def get_db_connection():
-    """Fetches a connection from the high-speed pool"""
+    """Fetches a connection from the high-speed pool and verifies it's alive"""
     try:
         if pg_pool:
-            # Get connection from pool (Instant)
-            try:
-                conn = pg_pool.getconn()
-                if conn:
-                    return conn, 'postgres'
-            except Exception as e:
-                print(f"[POOL] ⚠️ Pool Empty/Closed, trying fallback: {e}")
+            # Try to get a valid connection from the pool (max 2 attempts)
+            for _ in range(2):
+                try:
+                    conn = pg_pool.getconn()
+                    if conn:
+                        # Safety check: Verify connection is alive
+                        if conn.closed == 0:
+                            try:
+                                with conn.cursor() as cur:
+                                    cur.execute("SELECT 1")
+                                return conn, 'postgres'
+                            except:
+                                # Connection is dead, discard it and try again
+                                print("[POOL] ⚠️ Dead connection detected in pool, discarding...")
+                                try:
+                                    pg_pool.putconn(conn, close=True)
+                                except:
+                                    try: conn.close()
+                                    except: pass
+                        else:
+                            try:
+                                pg_pool.putconn(conn, close=True)
+                            except:
+                                try: conn.close()
+                                except: pass
+                except Exception as e:
+                    print(f"[POOL] Connection fetch warning: {e}")
+                    break
         
-        # Fallback (Should rarely happen)
+        # Fallback: Direct connection (Emergency)
         if DATABASE_URL:
             # REDUCED TIMEOUT: 7s + SSL
             conn = psycopg2.connect(DATABASE_URL, connect_timeout=7, sslmode='require')
@@ -249,9 +270,13 @@ def release_db_connection(conn, mode):
     # Mode 'postgres' can be either pooled or direct fallback
     if mode == 'postgres' and pg_pool:
         try:
-            pg_pool.putconn(conn)
-        except (psycopg2.pool.PoolError, Exception):
-            # If it's an "unkeyed connection" or pool is defunct, close it directly
+            # If the connection is closed or in error state, close it before returning
+            if conn.closed != 0:
+                pg_pool.putconn(conn, close=True)
+            else:
+                pg_pool.putconn(conn)
+        except Exception:
+            # If any error happens during putconn, just try to close it
             try:
                 conn.close()
             except:
