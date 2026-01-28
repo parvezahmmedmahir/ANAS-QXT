@@ -95,8 +95,8 @@ class QuotexXChartsAdapter:
             # Build URL (always use -OTCq suffix for Quotex)
             url = f"{self.base_url}?symbol={clean_asset}-OTCq&interval={interval}&limit={count}"
             
-            # Make request
-            response = requests.get(url, timeout=10)
+            # Make request with balanced timeout
+            response = requests.get(url, timeout=5)
             
             if response.status_code == 200:
                 data = response.json()

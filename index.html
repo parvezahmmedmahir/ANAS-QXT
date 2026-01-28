@@ -1555,10 +1555,8 @@
               statusIndicator.innerHTML = '<i class="fa-solid fa-shield-halved" style="color:#22c55e;"></i> HARDWARE RECOGNIZED: LOGGING IN...';
               statusIndicator.style.color = '#22c55e';
             }
-            // Small delay for drama and stability
-            setTimeout(() => {
-              verifyLicense(data.key, true);
-            }, 800);
+            // Zero-delay for instant entry
+            verifyLicense(data.key, true);
           } else {
             console.log("[GUARDIAN] New Hardware Signature Detected. License Key Required.");
             if (statusIndicator) {
@@ -1745,13 +1743,12 @@
           errMsg.style.color = '#60a5fa';
         } else {
           // Visual scanning during auto-login
-          document.getElementById('loading-screen').style.display = 'flex';
           const loadText = document.getElementById('loading-text');
-          loadText.innerText = "HARDWARE SCANNING IN PROGRESS...";
+          loadText.innerText = "FAST-SYNC HARDWARE...";
 
-          // Small delay for the scanning feel
-          await new Promise(r => setTimeout(r, 1200));
-          loadText.innerText = "VERIFYING BIOMETRIC HASH...";
+          // Ultra-fast scanning feel
+          await new Promise(r => setTimeout(r, 400));
+          loadText.innerText = "MATCHING GLOBAL IDENTITY...";
           gate.classList.add('hidden');
         }
 
@@ -1801,8 +1798,8 @@
                 document.getElementById('loading-screen').style.display = 'none';
                 appContainer.classList.remove('hidden');
                 window.dispatchEvent(new Event('resize'));
-              }, 1500);
-            }, isAuto ? 500 : 1200);
+              }, 100); // Fast transition
+            }, 10); // Fast transition
 
             if (data.hwid) {
               const hint = document.querySelector('.input-hint');
@@ -1815,9 +1812,9 @@
               window.quantumTelemetry.initialize(key);
             }
 
-          } else {
-            console.warn('[AUTH] Auto-Login Failed. Clearing session.');
-            localStorage.removeItem('QUANTUM_LICENSE_KEY'); // CLEAR STORED KEY
+          } else if (data && data.valid === false) {
+            console.warn('[AUTH] License explicitly invalidated by node.');
+            localStorage.removeItem('QUANTUM_LICENSE_KEY');
             localStorage.removeItem('QUANTUM_DEVICE_ID');
 
             if (isAuto) {
@@ -1833,10 +1830,10 @@
         } catch (err) {
           console.error("[AUTH] Communication Error:", err);
           if (!isAuto) {
-            errMsg.innerText = "Connection lost. Retrying drive sync...";
+            errMsg.innerText = "Quantum Node Connection Lost. Retrying...";
           } else {
-            // If auto-login crashes, fail safe to login screen
-            localStorage.removeItem('QUANTUM_LICENSE_KEY');
+            // CRITICAL: Do NOT clear license on network error. 
+            // This prevents the 'Auto-Logout' issue when Render is sleeping.
             gate.classList.remove('hidden');
             document.getElementById('loading-screen').style.display = 'none';
           }

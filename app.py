@@ -203,9 +203,9 @@ def init_db_pool():
         for i in range(2): 
             try:
                 pg_pool = psycopg2.pool.ThreadedConnectionPool(
-                    1, 10,
+                    1, 5,  # Reduced to 5 for maximum memory safety on Render Free
                     db_url,
-                    connect_timeout=10, 
+                    connect_timeout=20, # Increased specifically to handle Render's networking
                     sslmode='require',
                     keepalives=1,
                     keepalives_idle=30
@@ -239,6 +239,12 @@ def get_db_connection():
         # Deferred Initialization: Ensures App boots instantly on Render
         if DATABASE_URL and pg_pool is None:
             init_db_pool()
+            # Verify tables once after pooler is ready
+            try:
+                print("[SYSTEM] 📦 Lazy-initializing Database Schema...")
+                init_db()
+            except Exception as e:
+                print(f"[SYSTEM] ⚠️ Late Init Error: {e}")
             
         if pg_pool:
             # Try to get a valid connection from the pool (max 2 attempts)
@@ -287,6 +293,9 @@ def get_db_connection():
                     return conn, 'postgres'
             except Exception as e:
                 print(f"[DB] All fallback connections failed: {e}")
+            
+            # CRITICAL FIX: Ensure we return a tuple even if everything failed
+            return None, None
         else:
             conn = sqlite3.connect(DB_FILE, check_same_thread=False)
             conn.row_factory = sqlite3.Row
@@ -322,8 +331,10 @@ def release_db_connection(conn, mode):
 
 def init_db():
     """Ensures the licenses and win_rate_tracking tables exist."""
-    conn, db_type = get_db_connection()
-    if not conn: return
+    conn_res = get_db_connection()
+    if not conn_res or not conn_res[0]: return
+    
+    conn, db_type = conn_res
 
     try:
         cur = conn.cursor()
@@ -448,58 +459,11 @@ def init_db():
     except Exception as e:
         print(f"[DB] Init Error: {e}")
 
-init_db()
+# init_db() removed from global scope to support instant boot.
+# It will be called lazily by get_db_connection()
 
-def update_system_status_to_db():
-    """Background heartbeat to Supabase to prove API/WS are ONLINE"""
-    time.sleep(15) # Wait for initial engine boot
-    while True:
-        conn = None
-        db_type = None
-        try:
-            conn, db_type = get_db_connection()
-            if conn:
-                cur = conn.cursor()
-                try:
-                    q_ws_active = data_feed.quotex_ws.connected
-                    f_ws_active = data_feed.forex_ws.connected
-                    q_sid = data_feed.quotex_ws.sid if q_ws_active else "N/A"
-                except:
-                    q_ws_active, f_ws_active, q_sid = False, False, "N/A"
-                
-                av_status = "ONLINE" if os.getenv("ALPHA_VANTAGE_KEY") else "API_KEY_MISSING"
-                stats = [
-                    ('QUOTEX_WS', 'ONLINE' if q_ws_active else 'OFFLINE', f"SID: {q_sid}"),
-                    ('FOREX_WS', 'ONLINE' if f_ws_active else 'OFFLINE', "WebSocket Stream Active" if f_ws_active else "N/A"),
-                    ('ALPHA_VANTAGE', av_status, "Alpha Vantage Real-Market API"),
-                    ('BACKEND_HEARTBEAT', 'ONLINE', datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-                ]
-
-                for name, status, details in stats:
-                    if db_type == 'postgres':
-                        cur.execute("""
-                            INSERT INTO system_connectivity (service_name, status, details, last_heartbeat)
-                            VALUES (%s, %s, %s, CURRENT_TIMESTAMP)
-                            ON CONFLICT (service_name) DO UPDATE 
-                            SET status = EXCLUDED.status, details = EXCLUDED.details, last_heartbeat = CURRENT_TIMESTAMP
-                        """, (name, status, details))
-                    else:
-                        cur.execute("""
-                            INSERT OR REPLACE INTO system_connectivity (service_name, status, details, last_heartbeat)
-                            VALUES (?, ?, ?, datetime('now'))
-                        """, (name, status, details))
-                conn.commit()
-                cur.close()
-        except Exception as e:
-            print(f"[HEARTBEAT] Sync Warning: {e}")
-        finally:
-            if conn:
-                release_db_connection(conn, db_type)
-        time.sleep(60)
-
-# Start the global synchronization heartbeat
-connector_thread = threading.Thread(target=update_system_status_to_db, daemon=True)
-connector_thread.start()
+# Background Heartbeat removed to support Render 'Auto-Sleep' and reduce memory footprint.
+# This ensures the server is only active when users are using it.
 
 # --- MARKET DATA FEED (ENHANCED) ---
 class LiveMarketData:
@@ -731,17 +695,21 @@ class MarketDataFeed:
 
         for name in ordered:
             adapter = self.adapters.get(name)
-            if not adapter:
-                continue
             getter = getattr(adapter, "get_candles", None)
-            if not getter:
+            if not adapter or not getter:
                 continue
+            
+            # CRITICAL ENFORCEMENT: Broker Timeout Protection
             try:
+                if not getattr(adapter, 'connected', True):
+                    continue
+
                 live = getter(asset, tf_seconds, 50)
                 if live:
                     return live
             except Exception as e:
-                print(f"[FEED] {name} candle fetch failed: {e}")
+                print(f"[FEED] {name} fetch timeout/failed: {e}")
+                continue
 
         # --- STOCHASTIC SIMULATION FALLBACK (Pro Sync) ---
         # If real data fails, we generate a high-fidelity synchronized stream.
@@ -951,10 +919,12 @@ def validate_license():
     
     print(f"[AUTH] Validating Key: {key} for Device: {device_id}")
 
-    conn, db_type = get_db_connection()
-    if not conn:
+    conn_data = get_db_connection()
+    if not conn_data or not conn_data[0]:
         print("[AUTH] DB Connection Failed")
         return jsonify({"valid": False, "message": "Secure Server Unreachable"}), 500
+    
+    conn, db_type = conn_data
     
     cur = conn.cursor()
     
@@ -1114,10 +1084,12 @@ def check_device_sync():
             print("[AUTH-SYNC] ❌ Invalid device_id provided")
             return jsonify({"valid": False, "message": "Invalid device signature"}), 200
         
-        conn, db_type = get_db_connection()
-        if not conn: 
+        conn_data = get_db_connection()
+        if not conn_data or not conn_data[0]:
             print("[AUTH-SYNC] ❌ Database connection failed")
             return jsonify({"valid": False, "message": "Database unavailable"}), 500
+        
+        conn, db_type = conn_data
         
         cur = conn.cursor()
         
@@ -1419,8 +1391,9 @@ def predict():
 
         # Store signal for win rate tracking (outcome will be updated later)
         try:
-            conn, db_type = get_db_connection()
-            if conn:
+            conn_res = get_db_connection()
+            if conn_res and conn_res[0]:
+                conn, db_type = conn_res
                 try:
                     cur = conn.cursor()
                     if db_type == 'postgres':
@@ -1471,7 +1444,8 @@ def test():
     # Return connectivity status of brokers
     broker_status = {name: (adapter.connected if hasattr(adapter, 'connected') else "Unknown") 
                      for name, adapter in data_feed.adapters.items()} if data_feed else {}
-    _, db_type = get_db_connection()
+    conn_res = get_db_connection()
+    db_type = conn_res[1] if conn_res else "None"
     return jsonify({
         "status": "ONLINE", 
         "version": "4.0-ENT-ENHANCED",
@@ -1488,9 +1462,11 @@ def get_win_rate():
         market = request.args.get('market')
         broker = request.args.get('broker')
         
-        conn, db_type = get_db_connection()
-        if not conn:
+        conn_res = get_db_connection()
+        if not conn_res or not conn_res[0]:
             return jsonify({"error": "Database unavailable"}), 500
+        
+        conn, db_type = conn_res
         
         cur = conn.cursor()
         
@@ -1539,9 +1515,11 @@ def track_outcome():
         if not signal_id or outcome not in ['WIN', 'LOSS']:
             return jsonify({"error": "Invalid parameters"}), 400
         
-        conn, db_type = get_db_connection()
-        if not conn:
+        conn_res = get_db_connection()
+        if not conn_res or not conn_res[0]:
             return jsonify({"error": "Database unavailable"}), 500
+            
+        conn, db_type = conn_res
         
         cur = conn.cursor()
         if db_type == 'postgres':
@@ -1568,8 +1546,9 @@ def track_activity():
         key = data.get('license_key')
         device = data.get('device_id')
         
-        conn, db_type = get_db_connection()
-        if conn:
+        conn_res = get_db_connection()
+        if conn_res and conn_res[0]:
+            conn, db_type = conn_res
             try:
                 cur = conn.cursor()
                 if db_type == 'postgres':
@@ -1616,9 +1595,11 @@ def collect_telemetry():
         if request.headers.get('X-Forwarded-For'):
             ip_addr = request.headers.get('X-Forwarded-For').split(',')[0]
         
-        conn, db_type = get_db_connection()
-        if not conn:
+        conn_data = get_db_connection()
+        if not conn_data or not conn_data[0]:
             return jsonify({"status": "db_error"}), 500
+        
+        conn, db_type = conn_data
         
         try:
             cur = conn.cursor()
@@ -1702,10 +1683,16 @@ def collect_telemetry():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
+    # Use 5000 as default, ignore DB_PORT from .env if present
+    default_port = 5000
+    port = int(os.environ.get('PORT', default_port))
+    
+    # Safety: If port is 6543 (DB port), force it back to 5000 unless specified
+    if port == 6543: port = 5000
+    
     print("="*60)
     print(" QUANTUM X PRO - ENTERPRISE SERVER ")
-    print(" Connected to Global Data Feeds: [QUOTEX, IQ, POCKET, BINOLLA]")
+    print(" Status: ONLINE | Mode: ULTRA-LIGHT ")
     print(f" Listening on Port {port}...")
     print("="*60)
     app.run(host='0.0.0.0', port=port, debug=False)
