@@ -23,6 +23,39 @@ from collections import defaultdict
 import platform
 import subprocess
 import json
+import queue
+
+# --- ASYNC LOGGING CORE ---
+logging_queue = queue.Queue()
+
+def async_logger_worker():
+    """Background thread to handle non-critical DB logs without delaying signals"""
+    while True:
+        try:
+            task = logging_queue.get(timeout=5)
+            if not task: break
+            
+            # Execute DB Insert
+            from app import get_db_connection, release_db_connection
+            conn, db_type = get_db_connection()
+            if conn:
+                try:
+                    cur = conn.cursor()
+                    if db_type == 'postgres':
+                        cur.execute(task['query'], task['params'])
+                    else:
+                        cur.execute(task['query'].replace('%s', '?'), task['params'])
+                    conn.commit()
+                finally:
+                    release_db_connection(conn, db_type)
+            logging_queue.task_done()
+        except queue.Empty:
+            continue
+        except Exception as e:
+            print(f"[ASYNC-LOG] Error: {e}")
+
+# Start the background logger
+threading.Thread(target=async_logger_worker, daemon=True).start()
 
 # --- QUANTUM HWID & GUARDIAN CORE ---
 def generate_quantum_hwid(raw_id):
@@ -598,27 +631,7 @@ class LiveMarketData:
         self.api_key = api_key
         self.cache = {}  # key -> (timestamp, candles)
         self.cache_ttl = 55  # seconds
-        # Direct Mapping for High-Performance Quotex API (mrbeaxt.site)
-        self.mrbeast_mapping = {
-            "AUDCAD_otc": "AUDCAD_otc", "AUDCHF_otc": "AUDCHF_otc", "AUDJPY_otc": "AUDJPY_otc",
-            "AUDNZD_otc": "AUDNZD_otc", "AUDUSD_otc": "AUDUSD_otc", "AXP_otc": "AXP_otc",
-            "BCHUSD_otc": "BCHUSD_otc", "BRLUSD_otc": "BRLUSD_otc", "BTCUSD_otc": "BTCUSD_otc",
-            "CADCHF_otc": "CADCHF_otc", "CADJPY_otc": "CADJPY_otc", "CHFJPY_otc": "CHFJPY_otc",
-            "EURAUD_otc": "EURAUD_otc", "EURCAD_otc": "EURCAD_otc", "EURCHF_otc": "EURCHF_otc",
-            "EURGBP_otc": "EURGBP_otc", "EURJPY_otc": "EURJPY_otc", "EURNZD_otc": "EURNZD_otc",
-            "EURSGD_otc": "EURSGD_otc", "EURUSD": "EURUSD", "EURUSD_otc": "EURUSD_otc",
-            "FAANG_otc": "FAANG_otc", "GBPAUD_otc": "GBPAUD_otc", "GBPCAD_otc": "GBPCAD_otc",
-            "GBPCHF_otc": "GBPCHF_otc", "GBPJPY_otc": "GBPJPY_otc", "GBPNZD_otc": "GBPNZD_otc",
-            "GBPUSD_otc": "GBPUSD_otc", "INTC_otc": "INTC_otc", "JNJ_otc": "JNJ_otc",
-            "MCD_otc": "MCD_otc", "MSFT_otc": "MSFT_otc", "NZDCAD_otc": "NZDCAD_otc",
-            "NZDCHF_otc": "NZDCHF_otc", "NZDJPY_otc": "NZDJPY_otc", "NZDUSD_otc": "NZDUSD_otc",
-            "PFE_otc": "PFE_otc", "USDCAD_otc": "USDCAD_otc", "USDBDT_otc": "USDBDT_otc",
-            "USDCHF_otc": "USDCHF_otc", "USDCOP_otc": "USDCOP_otc", "USDDZD_otc": "USDDZD_otc",
-            "USDEGP_otc": "USDEGP_otc", "USDIDR_otc": "USDIDR_otc", "USDINR_otc": "USDINR_otc",
-            "USDJPY_otc": "USDJPY_otc", "USDMXN_otc": "USDMXN_otc", "USDNGN_otc": "USDNGN_otc",
-            "USDPKR_otc": "USDPKR_otc", "USDTRY_otc": "USDTRY_otc", "USDZAR_otc": "USDZAR_otc",
-            "XAUUSD_otc": "XAUUSD_otc"
-        }
+        self.cache_ttl = 55  # seconds
 
     def _cached(self, key):
         now = time.time()
@@ -681,36 +694,6 @@ class LiveMarketData:
             })
         return candles
 
-    def _fetch_mrbeast_data(self, asset):
-        """
-        Fetches high-speed data from mrbeaxt.site bridge for Quotex.
-        """
-        # Clean the asset name to match the API
-        api_pair = asset.replace(" (OTC)", "_otc").replace("/", "").strip()
-        
-        # Try finding in mapping or use constructed name
-        target = self.mrbeast_mapping.get(api_pair) or api_pair
-        
-        url = f"https://mrbeaxt.site/Qx/Qx.php?pair={target}&count=100"
-        try:
-            resp = requests.get(url, timeout=5)
-            if resp.status_code == 200:
-                data = resp.json()
-                # Expecting a list of candles: [{"open":..., "close":..., "high":..., "low":..., "time":...}]
-                if isinstance(data, list) and len(data) > 0:
-                    candles = []
-                    for c in data:
-                        candles.append({
-                            "open": float(c.get("open", 0)),
-                            "high": float(c.get("high", 0)),
-                            "low": float(c.get("low", 0)),
-                            "close": float(c.get("close", 0)),
-                            "ts": c.get("time") or time.time()
-                        })
-                    return candles
-        except Exception as e:
-            print(f"[MRBEAST] API Fetch Failed for {asset}: {e}")
-        return None
 
     def _fetch_fx_spot(self, from_sym, to_sym):
         """
@@ -790,12 +773,12 @@ class MarketDataFeed:
                     threading.Thread(target=self._start_ws_async, daemon=True).start()
 
     def _start_ws_async(self):
-        print("[FEED] Establishing WebSocket connections...")
+        print("[FEED] Establishing high-performance bridge connections...")
         try:
-            self.quotex_ws.connect()
+            # ONLY connect Forex WS, Quotex now uses the MrBeast Direct API
             self.forex_ws.connect()
         except Exception as e:
-            print(f"[FEED] WS Init Error: {e}")
+            print(f"[FEED] Bridge Init Error: {e}")
 
     def get_adapter(self, broker):
         """Lazy adapter initialization"""
@@ -883,11 +866,9 @@ class MarketDataFeed:
         cfg_brokers = [b for b in BROKER_CONFIG.keys() if b not in ordered]
         ordered += cfg_brokers
 
-        # 1. NEW: Try MrBeast API for Quotex markets first (Highest Stability)
         if "OTC" in asset or self.active_broker == "QUOTEX":
-            mrbeast_live = self.live_data._fetch_mrbeast_data(asset)
-            if mrbeast_live:
-                return mrbeast_live
+            # Quotex adapter is now updated to use the high-performance mrbeaxt.site API
+            pass
 
         for name in ordered:
             adapter = self.get_adapter(name)
@@ -1621,35 +1602,20 @@ def predict():
         # Generate unique signal ID for tracking
         signal_id = f"{broker}_{market}_{int(time.time())}"
 
-        # Store signal for win rate tracking (outcome will be updated later)
-        try:
-            conn, db_type = get_db_connection()
-            if conn:
-                try:
-                    cur = conn.cursor()
-                    if db_type == 'postgres':
-                        cur.execute("""
-                            INSERT INTO win_rate_tracking (signal_id, broker, market, direction, confidence, entry_time)
-                            VALUES (%s, %s, %s, %s, %s, %s)
-                        """, (signal_id, broker, market, direction, conf, entry_time_calculated))
-                    else:
-                        cur.execute("""
-                            INSERT INTO win_rate_tracking (signal_id, broker, market, direction, confidence, entry_time)
-                            VALUES (?, ?, ?, ?, ?, ?)
-                        """, (signal_id, broker, market, direction, conf, entry_time_calculated))
-                    conn.commit()
-                    cur.close()
-                finally:
-                    release_db_connection(conn, db_type)
-        except Exception as e:
-            print(f"[TRACKING] Failed to log signal: {e}")
+        # 4. ASYNC TRACKING: Queue the log entry (Non-blocking)
+        log_query = """
+            INSERT INTO win_rate_tracking (signal_id, broker, market, direction, confidence, entry_time)
+            VALUES (%s, %s, %s, %s, %s, %s)
+        """
+        log_params = (signal_id, broker, market, direction, confidence, entry_time_calculated)
+        logging_queue.put({'query': log_query, 'params': log_params})
         
         # Determine data source quality
         data_quality = "REAL" if candles else "SIMULATED"
         
         return jsonify({
             "direction": direction,
-            "confidence": conf,
+            "confidence": confidence,
             "entry_time": entry_time_calculated,
             "time_zone": timezone_name,
             "broker": broker,
