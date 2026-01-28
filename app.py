@@ -195,31 +195,31 @@ pg_pool = None
 def init_db_pool():
     global pg_pool
     if DATABASE_URL:
-        # MASTER FIX: If Render provides a 'pooler' URL (Port 6543), we FORCE it to Direct Port (5432)
-        # This fixes the 'timeout expired' issue on aws-1-ap-south-1.pooler.supabase.com
+        # MASTER FIX: Aggressively convert 'pooler' URLs to 'Direct' URLs
+        # This solves the Port 6543 timeout issue on Render
         db_url = DATABASE_URL
-        if "pooler.supabase.com" in db_url or ":6543" in db_url:
-            db_url = db_url.replace("pooler.supabase.com", "supabase.com")
+        if "pooler.supabase.com" in db_url:
+            # Extract project ID and rebuild as direct host
+            project_id = "cxflxjgtlwzxoltfphwt"
+            # Switch to Direct Host and Direct Port
+            db_url = db_url.replace("aws-1-ap-south-1.pooler.supabase.com", f"db.{project_id}.supabase.co")
             db_url = db_url.replace(":6543", ":5432")
-            print(f"[SERVER] 🛡️ SECURITY OVERRIDE: Redirected from Pooler to Direct DB (Port 5432)")
-
-        # Additional Safety: Use the Host from your .env if Render's URL is failing
-        env_host = os.getenv("HOST", "db.cxflxjgtlwzxoltfphwt.supabase.co")
-        if "timeout" in " ".join(sys.argv) or True: # Aggressive correction
-             pass
+            # Switch from Pooler User to Direct User (if present)
+            db_url = db_url.replace(f"postgres.{project_id}", "postgres")
+            print(f"[SERVER] 🛡️ EMERGENCY REDIRECT: Pooler (6543) -> Direct (5432) for stability")
 
         # Retry logic for Pool Initialization
         for i in range(3): 
             try:
                 pg_pool = psycopg2.pool.ThreadedConnectionPool(
-                    1, 25, # Max connections for peak users
+                    1, 25, 
                     db_url,
                     connect_timeout=20,
                     sslmode='require',
                     keepalives=1,
                     keepalives_idle=30
                 )
-                print(f"[SERVER] ✅ Final Database Handshake Successful (Host: 5432-Direct)")
+                print(f"[SERVER] ✅ Final Database Handshake Successful (Direct: 5432)")
                 break
             except Exception as e:
                 print(f"[SERVER] ⚠️ Pool Init Warning (Attempt {i+1}): {e}")
