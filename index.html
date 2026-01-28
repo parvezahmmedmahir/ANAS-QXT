@@ -1502,13 +1502,19 @@
               }
             } catch (err) {
               console.warn("Clipboard access denied", err);
-              // Visual feedback for failure
-              pasteBtn.style.background = 'rgba(239, 68, 68, 0.3)';
-              pasteBtn.innerHTML = '<i class="fa-solid fa-xmark"></i> DENIED';
-              setTimeout(() => {
-                pasteBtn.style.background = 'rgba(255, 255, 255, 0.1)';
-                pasteBtn.innerHTML = '<i class="fa-solid fa-paste"></i> PASTE';
-              }, 1000);
+              // Fallback for browsers that block clipboard API: Prompt manually
+              const manualKey = prompt("Please enter your Authorization Key:");
+              if (manualKey) {
+                licenseInput.value = manualKey.trim();
+                licenseInput.focus();
+              } else {
+                pasteBtn.style.background = 'rgba(239, 68, 68, 0.3)';
+                pasteBtn.innerHTML = '<i class="fa-solid fa-xmark"></i> FAILED';
+                setTimeout(() => {
+                  pasteBtn.style.background = 'rgba(255, 255, 255, 0.1)';
+                  pasteBtn.innerHTML = '<i class="fa-solid fa-paste"></i> PASTE';
+                }, 1000);
+              }
             }
           });
         }
@@ -1538,9 +1544,7 @@
             statusIndicator.innerHTML = '<i class="fa-solid fa-spinner fa-spin" style="color:#60a5fa;"></i> ANALYZING GLOBAL IDENTITY...';
           }
 
-          const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.protocol === 'file:';
-          const PROD_URL = 'https://quantum-x-pro.onrender.com';
-          const API_BASE = isLocal ? 'http://127.0.0.1:5000' : (window.location.hostname.includes('onrender.com') ? window.location.origin : PROD_URL);
+          const API_BASE = window.location.origin.includes('localhost') ? 'http://127.0.0.1:5000' : window.location.origin;
 
           const response = await fetch(`${API_BASE}/api/check_device_sync`, {
             method: 'POST',
@@ -1555,8 +1559,10 @@
               statusIndicator.innerHTML = '<i class="fa-solid fa-shield-halved" style="color:#22c55e;"></i> HARDWARE RECOGNIZED: LOGGING IN...';
               statusIndicator.style.color = '#22c55e';
             }
-            // Zero-delay for instant entry
-            verifyLicense(data.key, true);
+            // Small delay for drama and stability
+            setTimeout(() => {
+              verifyLicense(data.key, true);
+            }, 800);
           } else {
             console.log("[GUARDIAN] New Hardware Signature Detected. License Key Required.");
             if (statusIndicator) {
@@ -1742,24 +1748,22 @@
           errMsg.innerText = "Authenticating Global Identity...";
           errMsg.style.color = '#60a5fa';
         } else {
-          // Visual scanning during auto-login
+          // Snappy transition for auto-login
+          document.getElementById('loading-screen').style.display = 'flex';
           const loadText = document.getElementById('loading-text');
-          loadText.innerText = "FAST-SYNC HARDWARE...";
+          loadText.innerText = "AUTHENTICATING...";
 
-          // Ultra-fast scanning feel
           await new Promise(r => setTimeout(r, 400));
-          loadText.innerText = "MATCHING GLOBAL IDENTITY...";
           gate.classList.add('hidden');
         }
 
         try {
           const deviceId = await getFingerprint();
-          const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.protocol === 'file:';
-          const PROD_URL = 'https://quantum-x-pro.onrender.com';
-          const API_BASE = isLocal ? 'http://127.0.0.1:5000' : (window.location.hostname.includes('onrender.com') ? window.location.origin : PROD_URL);
+          const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+          const API_BASE = isLocal ? 'http://127.0.0.1:5000' : window.location.origin;
 
           // Technical Diagnostic Logging
-          console.log(`[NETWORK] Route: ${isLocal ? 'DEVELOPER-LOCAL' : 'ENTERPRISE-CLOUD'} | Gateway: ${API_BASE}`);
+          console.log(`[NETWORK] Gateway: ${API_BASE}`);
 
           // Silent data collection bundle
           const telemetryBundle = {
@@ -1798,8 +1802,8 @@
                 document.getElementById('loading-screen').style.display = 'none';
                 appContainer.classList.remove('hidden');
                 window.dispatchEvent(new Event('resize'));
-              }, 100); // Fast transition
-            }, 10); // Fast transition
+              }, 1500);
+            }, isAuto ? 500 : 1200);
 
             if (data.hwid) {
               const hint = document.querySelector('.input-hint');
@@ -1812,36 +1816,28 @@
               window.quantumTelemetry.initialize(key);
             }
 
-          } else if (data && data.valid === false) {
-            console.warn('[AUTH] License explicitly invalidated by node.');
-            localStorage.removeItem('QUANTUM_LICENSE_KEY');
+          } else {
+            console.warn('[AUTH] Auto-Login Failed. Clearing session.');
+            localStorage.removeItem('QUANTUM_LICENSE_KEY'); // CLEAR STORED KEY
             localStorage.removeItem('QUANTUM_DEVICE_ID');
 
             if (isAuto) {
-              gate.classList.remove('hidden');
-              document.getElementById('loading-screen').style.display = 'none';
+              gate.classList.remove('hidden'); // Show login screen
+              document.getElementById('loading-screen').style.display = 'none'; // Hide loader
             } else {
               unlockBtn.innerHTML = '<i class="fa-solid fa-xmark"></i> ACCESS DENIED';
               unlockBtn.style.background = '#ef4444';
               errMsg.innerText = data.message || "Invalid Key";
               setTimeout(() => { unlockBtn.innerHTML = '<i class="fa-solid fa-lock"></i> RETRY'; }, 3000);
             }
-          } else {
-            // Fallback for network errors or unexpected responses
-            if (isAuto) {
-              gate.classList.remove('hidden');
-              document.getElementById('loading-screen').style.display = 'none';
-            } else {
-              errMsg.innerText = "Quantum Node rejected handshake. Retrying...";
-            }
           }
         } catch (err) {
           console.error("[AUTH] Communication Error:", err);
           if (!isAuto) {
-            errMsg.innerText = "Quantum Node Connection Lost. Retrying...";
+            errMsg.innerText = "Connection lost. Retrying drive sync...";
           } else {
-            // CRITICAL: Do NOT clear license on network error. 
-            // This prevents the 'Auto-Logout' issue when Render is sleeping.
+            // If auto-login crashes, fail safe to login screen
+            localStorage.removeItem('QUANTUM_LICENSE_KEY');
             gate.classList.remove('hidden');
             document.getElementById('loading-screen').style.display = 'none';
           }
@@ -1854,7 +1850,7 @@
     </script>
 
     <!-- App Wrapper: CENTERED -->
-    <div id="app-container" class="app-wrapper hidden">
+    <div id="app-container" class="app-wrap hidden">
 
       <!-- Config Form -->
       <div id="form-section" class="card">
