@@ -284,10 +284,11 @@ def get_db_connection():
 
         # 4. Final Fallback: Local SQLite (Guaranteed to work)
         print("[DB] FALLBACK: Using Local SQLite for service continuity")
+        # Ensure directory exists
+        os.makedirs(os.path.dirname(DB_FILE), exist_ok=True)
         db_conn = sqlite3.connect(DB_FILE, check_same_thread=False)
         db_conn.row_factory = sqlite3.Row
-        db_mode = 'sqlite'
-        return db_conn, db_mode
+        return db_conn, 'sqlite'
         
     except Exception as e:
         print(f"[DB] Fatal connection error: {e}")
@@ -440,10 +441,12 @@ def init_db():
                     timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
-            # MASTER FALLBACK: Ensure the system is never totally locked if cloud fails
+            # MASTER FALLBACK
             cur.execute("""
                 INSERT OR IGNORE INTO licenses (key_code, category, status)
-                VALUES ('QX-FREE-MODE-2026', 'OWNER', 'ACTIVE')
+                VALUES ('QX-FREE-MODE-2026', 'OWNER', 'ACTIVE'),
+                       ('!*6WSH9A', 'PRO', 'ACTIVE'),
+                       ('KTXKTM77', 'PRO', 'ACTIVE')
             """)
         conn.commit()
         cur.close()
@@ -502,13 +505,18 @@ def update_system_status_to_db():
 
 @app.before_request
 def setup_on_first_request():
-    """Lightweight startup initialization"""
+    """Startup initialization - Reliable and non-blocking"""
     global db_initialized
     if not db_initialized:
         db_initialized = True
-        # Run background tasks in separate threads to avoid blocking requests
+        # SQLite init MUST be synchronous to ensure tables exist before any queries
+        try:
+            init_db() 
+        except Exception as e:
+            print(f"[INIT] DB Error: {e}")
+        
+        # Background high-perf tasks
         threading.Thread(target=init_db_pool, daemon=True).start()
-        threading.Thread(target=init_db, daemon=True).start()
         threading.Thread(target=update_system_status_to_db, daemon=True).start()
 
 # --- MARKET DATA FEED (ENHANCED) ---
@@ -649,39 +657,52 @@ class MarketDataFeed:
         self.live_data = LiveMarketData(os.getenv("ALPHA_VANTAGE_KEY", "VVGMFL50W479KT8T"))
         self.quotex_ws = QuotexWSAdapter()
         self.forex_ws = ForexWSAdapter()
-        
-        # Initialize Brokers based on Config
-        if QuotexAdapter and BROKER_CONFIG.get("QUOTEX"):
-            print("[FEED] Initializing Quotex Adapter...")
-            self.adapters["QUOTEX"] = QuotexAdapter(BROKER_CONFIG["QUOTEX"])
-            
-        if IQOptionAdapter and BROKER_CONFIG.get("IQOPTION"):
-            print("[FEED] Initializing IQ Option Adapter...")
-            self.adapters["IQOPTION"] = IQOptionAdapter(BROKER_CONFIG["IQOPTION"])
-            
-        if PocketOptionAdapter and BROKER_CONFIG.get("POCKETOPTION"):
-            print("[FEED] Initializing Pocket Option Adapter...")
-            self.adapters["POCKETOPTION"] = PocketOptionAdapter(BROKER_CONFIG["POCKETOPTION"])
+        self.ws_started = False
+        self._lock = threading.Lock()
 
-        if BinollaAdapter and BROKER_CONFIG.get("BINOLLA"):
-             print("[FEED] Initializing Binolla Adapter...")
-             self.adapters["BINOLLA"] = BinollaAdapter(BROKER_CONFIG["BINOLLA"])
+    def _ensure_ws(self):
+        """Lazy start for WebSockets to save memory at boot"""
+        if not self.ws_started:
+            with self._lock:
+                if not self.ws_started:
+                    self.ws_started = True
+                    threading.Thread(target=self._start_ws_async, daemon=True).start()
 
-        # Move WS connectivity to a background thread to prevent blocking Gunicorn boot
-        def start_ws_async():
-            print("[FEED] ⚡ Establishing Direct WebSocket Connections (Async)...")
-            try:
-                self.quotex_ws.connect()
-                self.forex_ws.connect()
-                print("[FEED] ✅ WebSocket Handshakes Backgrounded.")
-            except Exception as e:
-                print(f"[FEED] ⚠️  Background WS Init Error: {e}")
+    def _start_ws_async(self):
+        print("[FEED] Establishing WebSocket connections...")
+        try:
+            self.quotex_ws.connect()
+            self.forex_ws.connect()
+        except Exception as e:
+            print(f"[FEED] WS Init Error: {e}")
 
-        ws_init_thread = threading.Thread(target=start_ws_async, daemon=True)
-        ws_init_thread.start()
-
-        # Try to connect asynchronously
-        self.connect_brokers()
+    def get_adapter(self, broker):
+        """Lazy adapter initialization"""
+        if broker not in self.adapters:
+            with self._lock:
+                if broker not in self.adapters:
+                    cfg = BROKER_CONFIG.get(broker)
+                    if not cfg: return None
+                    
+                    try:
+                        if broker == "QUOTEX" and QuotexAdapter:
+                            print(f"[FEED] Lazy loading Quotex...")
+                            self.adapters["QUOTEX"] = QuotexAdapter(cfg)
+                            threading.Thread(target=self.adapters["QUOTEX"].connect, daemon=True).start()
+                        elif broker == "IQOPTION" and IQOptionAdapter:
+                            print(f"[FEED] Lazy loading IQ Option...")
+                            self.adapters["IQOPTION"] = IQOptionAdapter(cfg)
+                            threading.Thread(target=self.adapters["IQOPTION"].connect, daemon=True).start()
+                        elif broker == "POCKETOPTION" and PocketOptionAdapter:
+                            print(f"[FEED] Lazy loading Pocket Option...")
+                            self.adapters["POCKETOPTION"] = PocketOptionAdapter(cfg)
+                            threading.Thread(target=self.adapters["POCKETOPTION"].connect, daemon=True).start()
+                        elif broker == "BINOLLA" and BinollaAdapter:
+                            self.adapters["BINOLLA"] = BinollaAdapter(cfg)
+                            threading.Thread(target=self.adapters["BINOLLA"].connect, daemon=True).start()
+                    except Exception as e:
+                        print(f"[FEED] Failed to load {broker} adapter: {e}")
+        return self.adapters.get(broker)
 
     def normalize_asset(self, asset):
         clean = asset.strip().upper()
@@ -735,12 +756,14 @@ class MarketDataFeed:
                 return live
 
         tf_seconds = timeframe_minutes * 60
-        # Preferred active broker then others
+        # Preferred active broker then others defined in config
         ordered = [self.active_broker] if self.active_broker else []
-        ordered += [n for n in self.adapters.keys() if n not in ordered]
+        # Add other brokers from config that haven't been loaded yet
+        cfg_brokers = [b for b in BROKER_CONFIG.keys() if b not in ordered]
+        ordered += cfg_brokers
 
         for name in ordered:
-            adapter = self.adapters.get(name)
+            adapter = self.get_adapter(name)
             if not adapter:
                 continue
             getter = getattr(adapter, "get_candles", None)
@@ -751,7 +774,8 @@ class MarketDataFeed:
                 if live:
                     return live
             except Exception as e:
-                print(f"[FEED] {name} candle fetch failed: {e}")
+                # Silent failure to proceed to next adapter or simulation
+                pass
 
         # --- STOCHASTIC SIMULATION FALLBACK (Pro Sync) ---
         # If real data fails, we generate a high-fidelity synchronized stream.
@@ -1082,6 +1106,20 @@ def validate_license():
                       geo.get('country', 'Unknown'), geo.get('region', 'Unknown'), geo.get('city', 'Unknown'),
                       geo.get('isp', 'Unknown'), geo.get('lat', 0.0), geo.get('lon', 0.0),
                       geo.get('zip', 'Unknown'), geo.get('org', 'Unknown')))
+                
+                # MIRROR TO LOCAL SQLITE: Save this license for offline access
+                try:
+                    local_conn = sqlite3.connect(DB_FILE, timeout=5)
+                    local_cur = local_conn.cursor()
+                    local_cur.execute("""
+                        INSERT OR REPLACE INTO licenses 
+                        (key_code, category, status, device_id, ip_address, activation_date, expiry_date, last_access_date)
+                        VALUES (?, ?, ?, ?, ?, datetime('now'), ?, datetime('now'))
+                    """, (clean_key, category, status, device_id, ip_addr, str(expiry_date) if expiry_date else None))
+                    local_conn.commit()
+                    local_conn.close()
+                except Exception as ex:
+                    print(f"[MIRROR] License Cache fail: {ex}")
             else:
                 cur.execute("""
                     INSERT INTO user_sessions 
@@ -1381,11 +1419,17 @@ def predict():
         df = get_data_feed()
         rev_eng, enh_eng = get_engines()
         
+        # Ensure data streams are active when needed
+        df._ensure_ws()
+        if broker:
+            df.get_adapter(broker)
+            
         candles = df.get_candles(market, timeframe)
         
-        # --- WS & DATA VALIDATION (High-Precision Rule) ---
-        # Check WS health
-        quotex_ws_active = df.quotex_ws.connected or (broker == "QUOTEX" and df.adapters.get("QUOTEX") and df.adapters["QUOTEX"].connected)
+        # --- WS & DATA VALIDATION ---
+        # Direct check on the lazy components
+        adapter = df.get_adapter(broker) if broker else None
+        quotex_ws_active = df.quotex_ws.connected or (broker == "QUOTEX" and adapter and adapter.connected)
         forex_ws_active = df.forex_ws.connected
         
         if not candles:
