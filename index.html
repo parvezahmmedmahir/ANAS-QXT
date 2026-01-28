@@ -1554,20 +1554,24 @@
 
           const data = await response.json();
           if (data.valid && data.key) {
-            console.log("[AUTO-SYNC] Identity Confirmed via Hardware Signature. Bypassing Gate.");
+            console.log("[AUTO-SYNC] Identity Confirmed. Bypassing Entry Gate.");
             if (statusIndicator) {
-              statusIndicator.innerHTML = '<i class="fa-solid fa-shield-halved" style="color:#22c55e;"></i> HARDWARE RECOGNIZED: LOGGING IN...';
+              statusIndicator.innerHTML = '<i class="fa-solid fa-shield-halved" style="color:#22c55e;"></i> IDENTITY RECOGNIZED: INITIALIZING...';
               statusIndicator.style.color = '#22c55e';
             }
-            // Small delay for drama and stability
+            // Strict Direct Entry: Dissolve gate and enter system immediately
             setTimeout(() => {
+              gate.classList.add('hidden'); // Delete Enter Interface
               verifyLicense(data.key, true);
             }, 800);
           } else {
-            console.log("[GUARDIAN] New Hardware Signature Detected. License Key Required.");
+            console.log("[GUARDIAN] Identity Not Found. Prompting for License.");
             if (statusIndicator) {
-              statusIndicator.innerHTML = '<i class="fa-solid fa-circle-dot" style="color:#94a3b8;"></i> SYSTEM: READY FOR AUTHENTICATION';
+              statusIndicator.innerHTML = '<i class="fa-solid fa-circle-dot" style="color:#f87171;"></i> SYSTEM: LICENSE REQUIRED';
             }
+            // Show the gate if we aren't hiding it already
+            gate.classList.remove('hidden');
+            document.getElementById('loading-screen').style.display = 'none';
             if (data.hwid) {
               const hint = document.querySelector('.input-hint');
               if (hint) hint.innerHTML = `<i class="fa-solid fa-microchip" style="color:#60a5fa;"></i> SYSTEM ID: <span style="color:#fff; font-family:monospace; font-size:0.6rem;">${data.hwid}</span>`;
@@ -1611,68 +1615,33 @@
           }
         }
 
-        // Multi-Dimensional Hardware Signature Extraction
-        let browserFp = "UNAVAILABLE";
-        try {
-          if (typeof FingerprintJS !== 'undefined') {
-            const fpPromise = FingerprintJS.load();
-            const fp = await Promise.race([
-              fpPromise,
-              new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 2000))
-            ]);
-            const result = await fp.get();
-            browserFp = result.visitorId || "UID-" + Date.now();
-          }
-        } catch (e) {
-          console.warn("[GUARDIAN] Fingerprint extraction skipped:", e);
-          browserFp = "FB-" + Math.random().toString(36).substring(7).toUpperCase();
-        }
-
-        // Graphic Pipeline Signature (Canvas Fingerprint)
+        // Multi-Dimensional Hardware Signature Extraction (v8.5 Strict)
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
-        ctx.textBaseline = "top";
-        ctx.font = "16px 'Outfit', sans-serif";
-        ctx.fillStyle = "#3b82f6";
-        ctx.fillRect(125, 1, 62, 20);
-        ctx.fillStyle = "#fff";
-        ctx.fillText("Quantum-X-Pro-Guardian-v6", 2, 15);
-        const canvasData = canvas.toDataURL();
+        ctx.textBaseline = "top"; ctx.font = "16px 'Outfit'"; ctx.fillStyle = "#3b82f6";
+        ctx.fillRect(125, 1, 62, 20); ctx.fillStyle = "#fff";
+        ctx.fillText("QXP-PRO-v8-ULTRA", 2, 15);
+        const canvasFP = canvas.toDataURL().slice(-50);
 
-        // GPU Renderer Extraction
         const gl = document.createElement('canvas').getContext('webgl');
         const debugInfo = gl ? gl.getExtension('WEBGL_debug_renderer_info') : null;
-        const renderer = debugInfo ? gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) : "Unknown_GPU";
+        const gpu = debugInfo ? gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) : "Unknown_GPU";
 
-        // Hardware Identity Bundle
-        const info = {
-          visitor: browserFp,
-          gpu: renderer,
-          resolution: `${window.screen.width}x${window.screen.height}x${window.screen.colorDepth}`,
-          hardware: {
-            cores: navigator.hardwareConcurrency || 0,
-            memory: navigator.deviceMemory || 0,
-            platform: navigator.platform,
-            language: navigator.language
-          },
-          context: canvasData.slice(-64)
-        };
+        const hardwareHints = [
+          navigator.hardwareConcurrency || 0,
+          window.devicePixelRatio || 1,
+          gpu,
+          canvasFP,
+          screen.colorDepth,
+          Intl.DateTimeFormat().resolvedOptions().timeZone
+        ].join('|');
 
-        // SHA-256 equivalent hashing for the bundle (browser-side)
-        const rawString = JSON.stringify(info);
-        let hash = 0;
-        for (let i = 0; i < rawString.length; i++) {
-          const char = rawString.charCodeAt(i);
-          hash = ((hash << 5) - hash) + char;
-          hash = hash & hash; // Convert to 32bit integer
-        }
+        // Generate the final Secure Signature (Sticky & Strict)
+        const signatureBase = btoa(hardwareHints).substring(0, 16).toUpperCase().replace(/[/+=]/g, 'X');
+        const finalID = `QX-HW-${signatureBase}`;
 
-        const newID = `QX-HW-${Math.abs(hash).toString(16).toUpperCase()}-${browserFp.slice(0, 8).toUpperCase()}`;
-
-        // PERSIST THE ID FOREVER
-        localStorage.setItem('QUANTUM_DEVICE_ID', newID);
-
-        return newID;
+        localStorage.setItem('QUANTUM_DEVICE_ID', finalID);
+        return finalID;
       }
 
       // --- QUANTUM FIREWALL v6 (ANTI-INSPECTION) ---
