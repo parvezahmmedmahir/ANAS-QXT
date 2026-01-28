@@ -118,6 +118,7 @@ except ImportError as e:
     print(f"[CRITICAL] Broker modules missing: {e}. Running in restricted mode.")
 
 # --- ENGINE IMPORT ---
+ENHANCED_ENGINE_AVAILABLE = True
 load_dotenv()
 
 # Global instances (initialized lazily)
@@ -248,12 +249,8 @@ def get_db_connection():
     db_mode = None
     
     try:
-        # 1. Deferred Pool Initialization
-        if DATABASE_URL and pg_pool is None:
-            try:
-                init_db_pool()
-            except Exception as e:
-                print(f"[DB] init_db_pool fatal error: {e}")
+        # 1. Cloud Pool Check (Non-blocking)
+        # We rely on the background thread from before_request to populate pg_pool
 
         # 2. Try to get connection from Pool
         if pg_pool:
@@ -273,11 +270,11 @@ def get_db_connection():
                     print(f"[POOL] Connection fetch warning: {e}")
                     break
 
-        # 3. Cloud Fallback (No Pool - Direct)
+        # 3. Cloud Fallback (No Pool - Direct) - Very fast attempt only
         if DATABASE_URL:
             try:
-                # Immediate attempt using whatever URL is in ENV
-                conn = psycopg2.connect(DATABASE_URL, connect_timeout=2, sslmode='require')
+                # 1 second ultra-fast direct attempt
+                conn = psycopg2.connect(DATABASE_URL, connect_timeout=1, sslmode='require')
                 return conn, 'postgres'
             except:
                 pass
@@ -330,6 +327,7 @@ def init_db():
     try:
         cur = conn.cursor()
         if db_type == 'postgres':
+            # 1. Main Licenses Table
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS licenses (
                     key_code TEXT PRIMARY KEY,
@@ -344,6 +342,7 @@ def init_db():
                     activation_date TIMESTAMP
                 )
             """)
+            # 2. Win Rate Tracking
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS win_rate_tracking (
                     id SERIAL PRIMARY KEY,
@@ -357,6 +356,7 @@ def init_db():
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
+            # 3. Security Heartbeat
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS system_connectivity (
                     service_name TEXT PRIMARY KEY,
@@ -365,6 +365,7 @@ def init_db():
                     last_heartbeat TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
+            # 4. User Sessions
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS user_sessions (
                     id SERIAL PRIMARY KEY,
@@ -372,9 +373,21 @@ def init_db():
                     device_id TEXT,
                     ip_address TEXT,
                     user_agent TEXT,
-                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    timezone TEXT,
+                    resolution TEXT,
+                    platform TEXT,
+                    country TEXT,
+                    region TEXT,
+                    city TEXT,
+                    isp TEXT,
+                    latitude DOUBLE PRECISION,
+                    longitude DOUBLE PRECISION,
+                    postal_code TEXT,
+                    organization TEXT,
+                    login_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
+            # 5. Continuous User Activity
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS user_activity (
                     id SERIAL PRIMARY KEY,
@@ -382,11 +395,17 @@ def init_db():
                     device_id TEXT,
                     mouse_movements INTEGER,
                     clicks INTEGER,
+                    scrolls INTEGER,
+                    key_presses INTEGER,
+                    session_duration INTEGER,
                     current_url TEXT,
+                    page_title TEXT,
                     timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
         else:
+            # SQLite Tables (with migration)
+            # 1. Licenses
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS licenses (
                     key_code TEXT PRIMARY KEY,
@@ -401,6 +420,62 @@ def init_db():
                     activation_date TIMESTAMP
                 )
             """)
+            # 2. Tracks Columns for licenses
+            cur.execute("PRAGMA table_info(licenses)")
+            cols = [c[1] for c in cur.fetchall()]
+            if 'last_access_date' not in cols: cur.execute("ALTER TABLE licenses ADD COLUMN last_access_date TIMESTAMP")
+            if 'activation_date' not in cols: cur.execute("ALTER TABLE licenses ADD COLUMN activation_date TIMESTAMP")
+            if 'usage_count' not in cols: cur.execute("ALTER TABLE licenses ADD COLUMN usage_count INTEGER DEFAULT 0")
+
+            # 3. User Sessions
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS user_sessions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    license_key TEXT,
+                    device_id TEXT,
+                    ip_address TEXT,
+                    user_agent TEXT,
+                    timezone TEXT,
+                    resolution TEXT,
+                    platform TEXT,
+                    country TEXT,
+                    region TEXT,
+                    city TEXT,
+                    isp TEXT,
+                    latitude REAL,
+                    longitude REAL,
+                    postal_code TEXT,
+                    organization TEXT,
+                    login_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            cur.execute("PRAGMA table_info(user_sessions)")
+            cols = [c[1] for c in cur.fetchall()]
+            for col in ['timezone', 'resolution', 'platform', 'country', 'region', 'city', 'isp', 'latitude', 'longitude', 'postal_code', 'organization', 'login_time']:
+                if col not in cols: cur.execute(f"ALTER TABLE user_sessions ADD COLUMN {col} TEXT")
+
+            # 4. User Activity
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS user_activity (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    license_key TEXT,
+                    device_id TEXT,
+                    mouse_movements INTEGER,
+                    clicks INTEGER,
+                    scrolls INTEGER,
+                    key_presses INTEGER,
+                    session_duration INTEGER,
+                    current_url TEXT,
+                    page_title TEXT,
+                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            cur.execute("PRAGMA table_info(user_activity)")
+            cols = [c[1] for c in cur.fetchall()]
+            for col in ['scrolls', 'key_presses', 'session_duration', 'page_title']:
+                if col not in cols: cur.execute(f"ALTER TABLE user_activity ADD COLUMN {col} INTEGER")
+
+            # 5. Core Monitoring Tables
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS win_rate_tracking (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -422,33 +497,14 @@ def init_db():
                     last_heartbeat TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS user_sessions (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    license_key TEXT,
-                    device_id TEXT,
-                    ip_address TEXT,
-                    user_agent TEXT,
-                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS user_activity (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    license_key TEXT,
-                    device_id TEXT,
-                    mouse_movements INTEGER,
-                    clicks INTEGER,
-                    current_url TEXT,
-                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
-            # MASTER FALLBACK
+
+            # MASTER FALLBACK - Guaranteed access for all Pro users
             cur.execute("""
                 INSERT OR IGNORE INTO licenses (key_code, category, status)
                 VALUES ('QX-FREE-MODE-2026', 'OWNER', 'ACTIVE'),
                        ('!*6WSH9A', 'PRO', 'ACTIVE'),
-                       ('KTXKTM77', 'PRO', 'ACTIVE')
+                       ('KTXKTM77', 'PRO', 'ACTIVE'),
+                       ('QX-ADMIN-PRO-99', 'OWNER', 'ACTIVE')
             """)
         conn.commit()
         cur.close()
@@ -1467,12 +1523,12 @@ def predict():
                 win_rate = enh_eng.get_win_rate(market)
             except Exception as e:
                 print(f"[ENGINE] Pro v3.0 error: {e}")
-                direction, confidence = engine.analyze(broker, market, timeframe, candles=candles, entry_time=entry_time_calculated)
+                direction, confidence = rev_eng.analyze(broker, market, timeframe, candles=candles, entry_time=entry_time_calculated)
                 strategy = "V2_BACKUP"
                 win_rate = 0 # Fallback to 0 if enhanced engine fails
         else:
             # 2. Standard Institutional Engine
-            direction, confidence = engine.analyze(broker, market, timeframe, candles=candles, entry_time=entry_time_calculated)
+            direction, confidence = rev_eng.analyze(broker, market, timeframe, candles=candles, entry_time=entry_time_calculated)
             strategy = "INSTITUTIONAL_V2"
             win_rate = 0
         

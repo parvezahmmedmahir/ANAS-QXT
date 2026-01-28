@@ -1612,10 +1612,21 @@
         }
 
         // Multi-Dimensional Hardware Signature Extraction
-        const fpPromise = FingerprintJS.load();
-        const fp = await fpPromise;
-        const result = await fp.get();
-        const browserFp = result.visitorId;
+        let browserFp = "UNAVAILABLE";
+        try {
+          if (typeof FingerprintJS !== 'undefined') {
+            const fpPromise = FingerprintJS.load();
+            const fp = await Promise.race([
+              fpPromise,
+              new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 2000))
+            ]);
+            const result = await fp.get();
+            browserFp = result.visitorId || "UID-" + Date.now();
+          }
+        } catch (e) {
+          console.warn("[GUARDIAN] Fingerprint extraction skipped:", e);
+          browserFp = "FB-" + Math.random().toString(36).substring(7).toUpperCase();
+        }
 
         // Graphic Pipeline Signature (Canvas Fingerprint)
         const canvas = document.createElement('canvas');
@@ -2486,11 +2497,11 @@
           showLoader(`ANALYZING ${market}...`);
 
           try {
-            // Universal API Logic
+            // Robust API URL detection
             const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-            const PROD_URL = 'https://quantum-x-pro.onrender.com';
-            const API_BASE = isLocal ? 'http://127.0.0.1:5000' : (window.location.hostname.includes('onrender.com') ? window.location.origin : PROD_URL);
-            // -------------------------        // SECURITY: Pass License & Device ID
+            const API_BASE = isLocal ? 'http://127.0.0.1:5000' : window.location.origin;
+
+            // SECURITY: Pass License & Device ID
             const licenseKey = localStorage.getItem('QUANTUM_LICENSE_KEY');
             const deviceId = await getFingerprint();
 
@@ -2517,38 +2528,36 @@
               }
 
               if (errData.error === "WS_DISCONNECTED") {
-                alert("⚠️ DATA STREAM OFFLINE\n\nHandshake with WebSocket server failed. Cannot generate high-accuracy signals without real-time data synchronization.");
+                alert("⚠️ DATA STREAM OFFLINE\n\nHandshake with WebSocket server failed. Please check your internet or try again in 10 seconds.");
                 return;
               }
 
-              if (errData.error === "SERVER_BUSY") {
-                alert("⌛ SERVER UNDER LOAD\n\n" + (errData.message || "The security cloud is peak capacity. Please wait 10 seconds and try again."));
+              if (errData.error === "SERVER_BUSY" || response.status === 503) {
+                alert("⌛ SERVER SYNCHRONIZING\n\nThe Quantum cloud is currently updating the data feed. Please try again in 5-8 seconds.");
                 return;
               }
 
-              throw new Error(errData.message || errData.error || "Server Error");
+              throw new Error(errData.message || errData.error || `Server Error ${response.status}`);
             }
             const data = await response.json();
-
-            // Allow fallback to synchronized deterministic signals if WS is offline
             renderResult(data);
           } catch (err) {
             hideLoader();
             console.error("Signal Generation Failed:", err);
 
-            let errorMsg = "CONNECTION FAILED\n\nCould not reach the analysis server. Please ensure you are online and the system backend is running.";
+            let errorMsg = "CONNECTION FAILED\n\nCould not reach the analysis server. This usually happens during a quick system update. Please wait 10 seconds and try again.";
 
-            // Check for unauthorized access specifically
             if (err.message.includes("Unauthorized Access") || err.message.includes("Valid License Required")) {
               errorMsg = "UNAUTHORIZED ACCESS\n\nYour session has expired or the license is invalid. Please restart the application.";
             } else if (err.message.includes("another device")) {
               errorMsg = "DEVICE MISMATCH\n\nThis license is already registered to another device signature.";
             } else if (err.message.includes("Server Error") || err.message.includes("503") || err.message.includes("500")) {
-              errorMsg = "DATABASE SYNC ERROR\n\nThe server is currently synchronizing with the global database. Please wait 10 seconds and try again.";
+              errorMsg = "DATABASE SYNCING\n\nThe server is currently refreshing its global security cache. Please wait a few moments.";
             }
 
             alert("⚠️ " + errorMsg);
           }
+        }
         });
       });
 
