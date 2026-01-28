@@ -1,0 +1,214 @@
+{
+  "base_url": "https://mrbeaxt.site/Qx/Qx.php",
+  "count": 100,
+  "markets": [
+    {
+      "pair": "AUDCAD_otc",
+      "url": "https://mrbeaxt.site/Qx/Qx.php?pair=AUDCAD_otc&count=100"
+    },
+    {
+      "pair": "AUDCHF_otc",
+      "url": "https://mrbeaxt.site/Qx/Qx.php?pair=AUDCHF_otc&count=100"
+    },
+    {
+      "pair": "AUDJPY_otc",
+      "url": "https://mrbeaxt.site/Qx/Qx.php?pair=AUDJPY_otc&count=100"
+    },
+    {
+      "pair": "AUDNZD_otc",
+      "url": "https://mrbeaxt.site/Qx/Qx.php?pair=AUDNZD_otc&count=100"
+    },
+    {
+      "pair": "AUDUSD_otc",
+      "url": "https://mrbeaxt.site/Qx/Qx.php?pair=AUDUSD_otc&count=100"
+    },
+    {
+      "pair": "AXP_otc",
+      "url": "https://mrbeaxt.site/Qx/Qx.php?pair=AXP_otc&count=100"
+    },
+    {
+      "pair": "BCHUSD_otc",
+      "url": "https://mrbeaxt.site/Qx/Qx.php?pair=BCHUSD_otc&count=100"
+    },
+    {
+      "pair": "BRLUSD_otc",
+      "url": "https://mrbeaxt.site/Qx/Qx.php?pair=BRLUSD_otc&count=100"
+    },
+    {
+      "pair": "BTCUSD_otc",
+      "url": "https://mrbeaxt.site/Qx/Qx.php?pair=BTCUSD_otc&count=100"
+    },
+    {
+      "pair": "CADCHF_otc",
+      "url": "https://mrbeaxt.site/Qx/Qx.php?pair=CADCHF_otc&count=100"
+    },
+    {
+      "pair": "CADJPY_otc",
+      "url": "https://mrbeaxt.site/Qx/Qx.php?pair=CADJPY_otc&count=100"
+    },
+    {
+      "pair": "CHFJPY_otc",
+      "url": "https://mrbeaxt.site/Qx/Qx.php?pair=CHFJPY_otc&count=100"
+    },
+    {
+      "pair": "EURAUD_otc",
+      "url": "https://mrbeaxt.site/Qx/Qx.php?pair=EURAUD_otc&count=100"
+    },
+    {
+      "pair": "EURCAD_otc",
+      "url": "https://mrbeaxt.site/Qx/Qx.php?pair=EURCAD_otc&count=100"
+    },
+    {
+      "pair": "EURCHF_otc",
+      "url": "https://mrbeaxt.site/Qx/Qx.php?pair=EURCHF_otc&count=100"
+    },
+    {
+      "pair": "EURGBP_otc",
+      "url": "https://mrbeaxt.site/Qx/Qx.php?pair=EURGBP_otc&count=100"
+    },
+    {
+      "pair": "EURJPY_otc",
+      "url": "https://mrbeaxt.site/Qx/Qx.php?pair=EURJPY_otc&count=100"
+    },
+    {
+      "pair": "EURNZD_otc",
+      "url": "https://mrbeaxt.site/Qx/Qx.php?pair=EURNZD_otc&count=100"
+    },
+    {
+      "pair": "EURSGD_otc",
+      "url": "https://mrbeaxt.site/Qx/Qx.php?pair=EURSGD_otc&count=100"
+    },
+    {
+      "pair": "EURUSD",
+      "url": "https://mrbeaxt.site/Qx/Qx.php?pair=EURUSD&count=100"
+    },
+    {
+      "pair": "EURUSD_otc",
+      "url": "https://mrbeaxt.site/Qx/Qx.php?pair=EURUSD_otc&count=100"
+    },
+    {
+      "pair": "FAANG_otc",
+      "url": "https://mrbeaxt.site/Qx/Qx.php?pair=FAANG_otc&count=100"
+    },
+    {
+      "pair": "GBPAUD_otc",
+      "url": "https://mrbeaxt.site/Qx/Qx.php?pair=GBPAUD_otc&count=100"
+    },
+    {
+      "pair": "GBPCAD_otc",
+      "url": "https://mrbeaxt.site/Qx/Qx.php?pair=GBPCAD_otc&count=100"
+    },
+    {
+      "pair": "GBPCHF_otc",
+      "url": "https://mrbeaxt.site/Qx/Qx.php?pair=GBPCHF_otc&count=100"
+    },
+    {
+      "pair": "GBPJPY_otc",
+      "url": "https://mrbeaxt.site/Qx/Qx.php?pair=GBPJPY_otc&count=100"
+    },
+    {
+      "pair": "GBPNZD_otc",
+      "url": "https://mrbeaxt.site/Qx/Qx.php?pair=GBPNZD_otc&count=100"
+    },
+    {
+      "pair": "GBPUSD_otc",
+      "url": "https://mrbeaxt.site/Qx/Qx.php?pair=GBPUSD_otc&count=100"
+    },
+    {
+      "pair": "INTC_otc",
+      "url": "https://mrbeaxt.site/Qx/Qx.php?pair=INTC_otc&count=100"
+    },
+    {
+      "pair": "JNJ_otc",
+      "url": "https://mrbeaxt.site/Qx/Qx.php?pair=JNJ_otc&count=100"
+    },
+    {
+      "pair": "MCD_otc",
+      "url": "https://mrbeaxt.site/Qx/Qx.php?pair=MCD_otc&count=100"
+    },
+    {
+      "pair": "MSFT_otc",
+      "url": "https://mrbeaxt.site/Qx/Qx.php?pair=MSFT_otc&count=100"
+    },
+    {
+      "pair": "NZDCAD_otc",
+      "url": "https://mrbeaxt.site/Qx/Qx.php?pair=NZDCAD_otc&count=100"
+    },
+    {
+      "pair": "NZDCHF_otc",
+      "url": "https://mrbeaxt.site/Qx/Qx.php?pair=NZDCHF_otc&count=100"
+    },
+    {
+      "pair": "NZDJPY_otc",
+      "url": "https://mrbeaxt.site/Qx/Qx.php?pair=NZDJPY_otc&count=100"
+    },
+    {
+      "pair": "NZDUSD_otc",
+      "url": "https://mrbeaxt.site/Qx/Qx.php?pair=NZDUSD_otc&count=100"
+    },
+    {
+      "pair": "PFE_otc",
+      "url": "https://mrbeaxt.site/Qx/Qx.php?pair=PFE_otc&count=100"
+    },
+    {
+      "pair": "USDCAD_otc",
+      "url": "https://mrbeaxt.site/Qx/Qx.php?pair=USDCAD_otc&count=100"
+    },
+    {
+      "pair": "USDBDT_otc",
+      "url": "https://mrbeaxt.site/Qx/Qx.php?pair=USDBDT_otc&count=100"
+    },
+    {
+      "pair": "USDCHF_otc",
+      "url": "https://mrbeaxt.site/Qx/Qx.php?pair=USDCHF_otc&count=100"
+    },
+    {
+      "pair": "USDCOP_otc",
+      "url": "https://mrbeaxt.site/Qx/Qx.php?pair=USDCOP_otc&count=100"
+    },
+    {
+      "pair": "USDDZD_otc",
+      "url": "https://mrbeaxt.site/Qx/Qx.php?pair=USDDZD_otc&count=100"
+    },
+    {
+      "pair": "USDEGP_otc",
+      "url": "https://mrbeaxt.site/Qx/Qx.php?pair=USDEGP_otc&count=100"
+    },
+    {
+      "pair": "USDIDR_otc",
+      "url": "https://mrbeaxt.site/Qx/Qx.php?pair=USDIDR_otc&count=100"
+    },
+    {
+      "pair": "USDINR_otc",
+      "url": "https://mrbeaxt.site/Qx/Qx.php?pair=USDINR_otc&count=100"
+    },
+    {
+      "pair": "USDJPY_otc",
+      "url": "https://mrbeaxt.site/Qx/Qx.php?pair=USDJPY_otc&count=100"
+    },
+    {
+      "pair": "USDMXN_otc",
+      "url": "https://mrbeaxt.site/Qx/Qx.php?pair=USDMXN_otc&count=100"
+    },
+    {
+      "pair": "USDNGN_otc",
+      "url": "https://mrbeaxt.site/Qx/Qx.php?pair=USDNGN_otc&count=100"
+    },
+    {
+      "pair": "USDPKR_otc",
+      "url": "https://mrbeaxt.site/Qx/Qx.php?pair=USDPKR_otc&count=100"
+    },
+    {
+      "pair": "USDTRY_otc",
+      "url": "https://mrbeaxt.site/Qx/Qx.php?pair=USDTRY_otc&count=100"
+    },
+    {
+      "pair": "USDZAR_otc",
+      "url": "https://mrbeaxt.site/Qx/Qx.php?pair=USDZAR_otc&count=100"
+    },
+    {
+      "pair": "XAUUSD_otc",
+      "url": "https://mrbeaxt.site/Qx/Qx.php?pair=XAUUSD_otc&count=100"
+    }
+  ]
+}
