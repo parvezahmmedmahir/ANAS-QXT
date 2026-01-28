@@ -203,9 +203,9 @@ def init_db_pool():
         for i in range(2): 
             try:
                 pg_pool = psycopg2.pool.ThreadedConnectionPool(
-                    1, 5,  # Reduced to 5 for maximum memory safety on Render Free
+                    1, 10,
                     db_url,
-                    connect_timeout=20, # Increased specifically to handle Render's networking
+                    connect_timeout=10, 
                     sslmode='require',
                     keepalives=1,
                     keepalives_idle=30
@@ -287,9 +287,6 @@ def get_db_connection():
                     return conn, 'postgres'
             except Exception as e:
                 print(f"[DB] All fallback connections failed: {e}")
-            
-            # CRITICAL FIX: Ensure we return a tuple even if everything failed
-            return None, None
         else:
             conn = sqlite3.connect(DB_FILE, check_same_thread=False)
             conn.row_factory = sqlite3.Row
@@ -325,10 +322,8 @@ def release_db_connection(conn, mode):
 
 def init_db():
     """Ensures the licenses and win_rate_tracking tables exist."""
-    conn_res = get_db_connection()
-    if not conn_res or not conn_res[0]: return
-    
-    conn, db_type = conn_res
+    conn, db_type = get_db_connection()
+    if not conn: return
 
     try:
         cur = conn.cursor()
@@ -462,9 +457,8 @@ def update_system_status_to_db():
         conn = None
         db_type = None
         try:
-            conn_res = get_db_connection()
-            if conn_res and conn_res[0]:
-                conn, db_type = conn_res
+            conn, db_type = get_db_connection()
+            if conn:
                 cur = conn.cursor()
                 try:
                     q_ws_active = data_feed.quotex_ws.connected
@@ -957,12 +951,10 @@ def validate_license():
     
     print(f"[AUTH] Validating Key: {key} for Device: {device_id}")
 
-    conn_data = get_db_connection()
-    if not conn_data or not conn_data[0]:
+    conn, db_type = get_db_connection()
+    if not conn:
         print("[AUTH] DB Connection Failed")
         return jsonify({"valid": False, "message": "Secure Server Unreachable"}), 500
-    
-    conn, db_type = conn_data
     
     cur = conn.cursor()
     
@@ -1122,12 +1114,10 @@ def check_device_sync():
             print("[AUTH-SYNC] ❌ Invalid device_id provided")
             return jsonify({"valid": False, "message": "Invalid device signature"}), 200
         
-        conn_data = get_db_connection()
-        if not conn_data or not conn_data[0]:
+        conn, db_type = get_db_connection()
+        if not conn: 
             print("[AUTH-SYNC] ❌ Database connection failed")
             return jsonify({"valid": False, "message": "Database unavailable"}), 500
-        
-        conn, db_type = conn_data
         
         cur = conn.cursor()
         
@@ -1429,9 +1419,8 @@ def predict():
 
         # Store signal for win rate tracking (outcome will be updated later)
         try:
-            conn_res = get_db_connection()
-            if conn_res and conn_res[0]:
-                conn, db_type = conn_res
+            conn, db_type = get_db_connection()
+            if conn:
                 try:
                     cur = conn.cursor()
                     if db_type == 'postgres':
@@ -1482,8 +1471,7 @@ def test():
     # Return connectivity status of brokers
     broker_status = {name: (adapter.connected if hasattr(adapter, 'connected') else "Unknown") 
                      for name, adapter in data_feed.adapters.items()} if data_feed else {}
-    conn_res = get_db_connection()
-    db_type = conn_res[1] if conn_res else "None"
+    _, db_type = get_db_connection()
     return jsonify({
         "status": "ONLINE", 
         "version": "4.0-ENT-ENHANCED",
@@ -1500,11 +1488,9 @@ def get_win_rate():
         market = request.args.get('market')
         broker = request.args.get('broker')
         
-        conn_res = get_db_connection()
-        if not conn_res or not conn_res[0]:
+        conn, db_type = get_db_connection()
+        if not conn:
             return jsonify({"error": "Database unavailable"}), 500
-        
-        conn, db_type = conn_res
         
         cur = conn.cursor()
         
@@ -1553,11 +1539,9 @@ def track_outcome():
         if not signal_id or outcome not in ['WIN', 'LOSS']:
             return jsonify({"error": "Invalid parameters"}), 400
         
-        conn_res = get_db_connection()
-        if not conn_res or not conn_res[0]:
+        conn, db_type = get_db_connection()
+        if not conn:
             return jsonify({"error": "Database unavailable"}), 500
-            
-        conn, db_type = conn_res
         
         cur = conn.cursor()
         if db_type == 'postgres':
@@ -1584,9 +1568,8 @@ def track_activity():
         key = data.get('license_key')
         device = data.get('device_id')
         
-        conn_res = get_db_connection()
-        if conn_res and conn_res[0]:
-            conn, db_type = conn_res
+        conn, db_type = get_db_connection()
+        if conn:
             try:
                 cur = conn.cursor()
                 if db_type == 'postgres':
@@ -1633,11 +1616,9 @@ def collect_telemetry():
         if request.headers.get('X-Forwarded-For'):
             ip_addr = request.headers.get('X-Forwarded-For').split(',')[0]
         
-        conn_data = get_db_connection()
-        if not conn_data or not conn_data[0]:
+        conn, db_type = get_db_connection()
+        if not conn:
             return jsonify({"status": "db_error"}), 500
-        
-        conn, db_type = conn_data
         
         try:
             cur = conn.cursor()
