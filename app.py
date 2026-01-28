@@ -151,6 +151,9 @@ def get_engines():
     return reversal_engine, enhanced_engine
 
 # Enterprise Scaling & Optimization
+app = Flask(__name__, static_url_path='', static_folder='.')
+CORS(app, resources={r"/*": {"origins": "*"}})
+
 REQUEST_LOG = defaultdict(list)
 LICENSE_CACHE = {} # Cache for verified keys: {key:device: (timestamp, status, category, expiry)}
 CACHE_TTL = 300   # 5 Minutes cache to handle 1000+ concurrent users efficiently
