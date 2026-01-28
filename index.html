@@ -1476,14 +1476,8 @@
           });
         }
 
-        // Hardware & License Sync
-        const savedKey = localStorage.getItem('QUANTUM_LICENSE_KEY');
-        if (savedKey) {
-          verifyLicense(savedKey, true);
-        } else {
-          // Attempt Zero-Click Hardware Login
-          syncDeviceHardware();
-        }
+        // Hardware & License Sync (Primary Entry Point)
+        syncDeviceHardware();
 
         // Background System Check
         checkSystemDB();
@@ -1493,19 +1487,28 @@
         if (pasteBtn) {
           pasteBtn.addEventListener('click', async () => {
             try {
+              // Focus the input first (sometimes required for clipboard API)
+              licenseInput.focus();
               const text = await navigator.clipboard.readText();
               if (text) {
                 licenseInput.value = text.trim();
-                licenseInput.focus();
                 // Brief flash to show it worked
-                pasteBtn.style.background = 'rgba(34, 197, 94, 0.3)';
-                setTimeout(() => { pasteBtn.style.background = 'rgba(255, 255, 255, 0.1)'; }, 300);
+                pasteBtn.style.background = 'rgba(34, 197, 94, 0.4)';
+                pasteBtn.innerHTML = '<i class="fa-solid fa-check"></i> PASTED';
+                setTimeout(() => {
+                  pasteBtn.style.background = 'rgba(255, 255, 255, 0.1)';
+                  pasteBtn.innerHTML = '<i class="fa-solid fa-paste"></i> PASTE';
+                }, 1000);
               }
             } catch (err) {
               console.warn("Clipboard access denied", err);
-              // Fallback: briefly change button style to show failure
+              // Visual feedback for failure
               pasteBtn.style.background = 'rgba(239, 68, 68, 0.3)';
-              setTimeout(() => { pasteBtn.style.background = 'rgba(255, 255, 255, 0.1)'; }, 300);
+              pasteBtn.innerHTML = '<i class="fa-solid fa-xmark"></i> DENIED';
+              setTimeout(() => {
+                pasteBtn.style.background = 'rgba(255, 255, 255, 0.1)';
+                pasteBtn.innerHTML = '<i class="fa-solid fa-paste"></i> PASTE';
+              }, 1000);
             }
           });
         }
@@ -1513,12 +1516,19 @@
 
       async function syncDeviceHardware() {
         try {
-          // --- POWERFUL AUTO-LOGIN (v2.0) ---
-          // 1. Priority: Check for Stored License Key (Most Reliable)
+          const statusIndicator = document.getElementById('system-status-indicator');
+          if (statusIndicator) {
+            statusIndicator.innerHTML = '<i class="fa-solid fa-microchip fa-spin" style="color:#60a5fa;"></i> SCANNING HARDWARE...';
+          }
+
+          // 1. Always perform a scan first (user requirement for 'scanning when enters')
+          const deviceId = await getFingerprint();
+          console.log(`[GUARDIAN] Analyzing Hardware Signature: ${deviceId}`);
+
+          // 2. Check for Stored License Key
           const storedKey = localStorage.getItem('QUANTUM_LICENSE_KEY');
           if (storedKey && storedKey.length > 5) {
-            console.log("[AUTO-LOGIN] ⚡ Fast-Track: Found Stored License Key.");
-            // Verify directly with the key (Updates IP, Usage, etc.)
+            console.log("[AUTO-LOGIN] ⚡ Identified Stored Key. Verifying...");
             verifyLicense(storedKey, true);
             return;
           }
@@ -1738,8 +1748,14 @@
           errMsg.innerText = "Authenticating Global Identity...";
           errMsg.style.color = '#60a5fa';
         } else {
+          // Visual scanning during auto-login
           document.getElementById('loading-screen').style.display = 'flex';
-          document.getElementById('loading-text').innerText = "VERIFYING BIOMETRIC HASH...";
+          const loadText = document.getElementById('loading-text');
+          loadText.innerText = "HARDWARE SCANNING IN PROGRESS...";
+
+          // Small delay for the scanning feel
+          await new Promise(r => setTimeout(r, 1200));
+          loadText.innerText = "VERIFYING BIOMETRIC HASH...";
           gate.classList.add('hidden');
         }
 

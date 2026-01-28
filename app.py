@@ -200,12 +200,12 @@ def init_db_pool():
         print(f"[SERVER] 🔌 Connecting to Database Port: {PORT}")
 
         # Retry logic for Pool Initialization
-        for i in range(3): 
+        for i in range(2): # Reduced to 2 attempts for faster boot
             try:
                 pg_pool = psycopg2.pool.ThreadedConnectionPool(
-                    1, 25, 
+                    1, 10,  # Reduced from 25 to 10 for memory safety
                     db_url,
-                    connect_timeout=20,
+                    connect_timeout=10, # Reduced from 20 to 10
                     sslmode='require',
                     keepalives=1,
                     keepalives_idle=30
@@ -214,7 +214,7 @@ def init_db_pool():
                 break
             except Exception as e:
                 print(f"[SERVER] ⚠️ Pool Init Warning (Attempt {i+1}): {e}")
-                if i < 2: time.sleep(3)
+                if i < 1: time.sleep(2)
 
 # Initialize pool on startup
 init_db_pool()
