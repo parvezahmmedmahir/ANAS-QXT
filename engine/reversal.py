@@ -101,13 +101,15 @@ class ReversalEngine:
                 confidence = random.randint(86, 89)
             strategy = "ALGORITHMIC_CONTINUATION"
         
-        # Store for tracking
+        # Store for tracking (Capped to 100 items for memory safety)
         self.signal_history.append({
             "time": datetime.datetime.now(),
             "market": market,
             "direction": direction,
             "confidence": confidence
         })
+        if len(self.signal_history) > 100:
+            self.signal_history = self.signal_history[-100:]
         
         return direction, confidence, strategy
     

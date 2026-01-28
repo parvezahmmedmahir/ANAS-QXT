@@ -118,25 +118,37 @@ except ImportError as e:
     print(f"[CRITICAL] Broker modules missing: {e}. Running in restricted mode.")
 
 # --- ENGINE IMPORT ---
-try:
-    from engine.reversal import ReversalEngine
-except ImportError:
-    print("[WARN] Reversal Engine module missing. Using internal fallback.")
-    ReversalEngine = None
-
-try:
-    from engine.enhanced import EnhancedEngine
-    ENHANCED_ENGINE_AVAILABLE = True
-except ImportError as e:
-    print(f"[WARN] Enhanced Engine module missing: {e}. Using standard engine.")
-    ENHANCED_ENGINE_AVAILABLE = False
-    EnhancedEngine = None
-
-app = Flask(__name__, static_url_path='', static_folder='.')
-# Enable CORS for all routes
-CORS(app, resources={r"/*": {"origins": "*"}})
-
 load_dotenv()
+
+# Global instances (initialized lazily)
+data_feed = None
+reversal_engine = None
+enhanced_engine = None
+db_initialized = False
+
+def get_data_feed():
+    global data_feed
+    if data_feed is None:
+        data_feed = MarketDataFeed()
+    return data_feed
+
+def get_engines():
+    global reversal_engine, enhanced_engine
+    if reversal_engine is None:
+        try:
+            from engine.reversal import ReversalEngine
+            reversal_engine = ReversalEngine() if ReversalEngine else None
+        except:
+            reversal_engine = None
+            
+    if enhanced_engine is None and ENHANCED_ENGINE_AVAILABLE:
+        try:
+            from engine.enhanced import EnhancedEngine
+            enhanced_engine = EnhancedEngine()
+            print("[ENGINE] Pro Engine v3.0 Loaded")
+        except:
+            enhanced_engine = None
+    return reversal_engine, enhanced_engine
 
 # Enterprise Scaling & Optimization
 REQUEST_LOG = defaultdict(list)
@@ -451,22 +463,21 @@ def init_db():
     except Exception as e:
         print(f"[DB] Init Error: {e}")
 
-init_db()
-
 def update_system_status_to_db():
     """Background heartbeat to Supabase to prove API/WS are ONLINE"""
-    time.sleep(15) # Wait for initial engine boot
+    time.sleep(30) # Longer wait for initial boot
     while True:
         conn = None
         db_type = None
         try:
+            df = get_data_feed()
             conn, db_type = get_db_connection()
             if conn:
                 cur = conn.cursor()
                 try:
-                    q_ws_active = data_feed.quotex_ws.connected
-                    f_ws_active = data_feed.forex_ws.connected
-                    q_sid = data_feed.quotex_ws.sid if q_ws_active else "N/A"
+                    q_ws_active = df.quotex_ws.connected
+                    f_ws_active = df.forex_ws.connected
+                    q_sid = df.quotex_ws.sid if q_ws_active else "N/A"
                 except:
                     q_ws_active, f_ws_active, q_sid = False, False, "N/A"
                 
@@ -500,9 +511,16 @@ def update_system_status_to_db():
                 release_db_connection(conn, db_type)
         time.sleep(60)
 
-# Start the global synchronization heartbeat
-connector_thread = threading.Thread(target=update_system_status_to_db, daemon=True)
-connector_thread.start()
+@app.before_request
+def setup_on_first_request():
+    """Ensure DB and background tasks are ready without blocking boot"""
+    global db_initialized
+    if not db_initialized:
+        # Move DB init here to avoid blocking Gunicorn boot
+        threading.Thread(target=init_db, daemon=True).start()
+        # Start heartbeat
+        threading.Thread(target=update_system_status_to_db, daemon=True).start()
+        db_initialized = True
 
 # --- MARKET DATA FEED (ENHANCED) ---
 class LiveMarketData:
@@ -789,21 +807,15 @@ class MarketDataFeed:
             
         return candles[::-1]
 
-data_feed = MarketDataFeed()
-reversal_engine = ReversalEngine() if ReversalEngine else None
-
-# Initialize Enhanced Engine if available
-if ENHANCED_ENGINE_AVAILABLE:
-    enhanced_engine = EnhancedEngine()
-    print("[ENGINE] ✅ Pro Engine v3.0 Loaded (Wick Rejection + Stochastic Sync)")
-else:
-    enhanced_engine = None
-    print("[ENGINE] ⚠️  Fallback Engine Active")
+# Global accessors removed top-level initialization
+# data_feed = MarketDataFeed()
+# reversal_engine = ReversalEngine()
+# enhanced_engine = EnhancedEngine()
 
 # --- ADVANCED SIGNAL STRATEGIES ---
 class InstitutionalSignalEngine:
     def __init__(self):
-        self.reversal_engine = reversal_engine
+        pass
 
     def calculate_rsi(self, prices, period=14):
         if not prices: return 50
@@ -874,15 +886,18 @@ class InstitutionalSignalEngine:
         """
         Standard analysis with global synchronization logic.
         """
+        df = get_data_feed()
+        rev_eng, enh_eng = get_engines()
+        
         # 1. Get Data (Real or provided)
         if candles is None:
-            candles = data_feed.get_candles(marker, timeframe)
+            candles = df.get_candles(marker, timeframe)
         closes = [c['close'] for c in candles] if candles else []
         
         # 2. Reversal Engine Analysis
         rev_dir, rev_conf, rev_strategy = "NEUTRAL", 0, None
-        if self.reversal_engine:
-            rev_dir, rev_conf, rev_strategy = self.reversal_engine.analyze(marker, timeframe, real_candles=candles)
+        if rev_eng:
+            rev_dir, rev_conf, rev_strategy = rev_eng.analyze(marker, timeframe, real_candles=candles)
         
         # 3. Decision Logic
         if rev_dir != "NEUTRAL" and rev_conf > 85:
@@ -1374,12 +1389,15 @@ def predict():
             }), 403
         # ----------------------------
         
-        candles = data_feed.get_candles(market, timeframe)
+        df = get_data_feed()
+        rev_eng, enh_eng = get_engines()
+        
+        candles = df.get_candles(market, timeframe)
         
         # --- WS & DATA VALIDATION (High-Precision Rule) ---
         # Check WS health
-        quotex_ws_active = data_feed.quotex_ws.connected or (broker == "QUOTEX" and data_feed.adapters.get("QUOTEX") and data_feed.adapters["QUOTEX"].connected)
-        forex_ws_active = data_feed.forex_ws.connected
+        quotex_ws_active = df.quotex_ws.connected or (broker == "QUOTEX" and df.adapters.get("QUOTEX") and df.adapters["QUOTEX"].connected)
+        forex_ws_active = df.forex_ws.connected
         
         if not candles:
             print(f"[PREDICT] Aborting: No real-time data for {market}")
@@ -1406,15 +1424,21 @@ def predict():
             # Global Fallback to UTC if timezone is invalid
             utc_now = datetime.datetime.utcnow()
             entry_time_calculated = (utc_now + datetime.timedelta(minutes=1)).strftime("%H:%M")
-
-        if enhanced_engine:
-            direction, conf, strategy = enhanced_engine.analyze(broker, market, timeframe, candles=candles, entry_time=entry_time_calculated)
-            
-            # Get win rate estimate
-            win_rate = enhanced_engine.get_win_rate(market)
+        # 1. Primary Pro Engine 3.0 (If available)
+        if enh_eng:
+            try:
+                direction, confidence, strategy = enh_eng.analyze(broker, market, timeframe, candles=candles, entry_time=entry_time_calculated)
+                # Get win rate estimate
+                win_rate = enh_eng.get_win_rate(market)
+            except Exception as e:
+                print(f"[ENGINE] Pro v3.0 error: {e}")
+                direction, confidence = engine.analyze(broker, market, timeframe, candles=candles, entry_time=entry_time_calculated)
+                strategy = "V2_BACKUP"
+                win_rate = 0 # Fallback to 0 if enhanced engine fails
         else:
-            direction, conf = engine.analyze(broker, market, timeframe, candles=candles, entry_time=entry_time_calculated)
-            strategy = "STANDARD_ANALYSIS"
+            # 2. Standard Institutional Engine
+            direction, confidence = engine.analyze(broker, market, timeframe, candles=candles, entry_time=entry_time_calculated)
+            strategy = "INSTITUTIONAL_V2"
             win_rate = 0
         
         # Generate unique signal ID for tracking

@@ -259,7 +259,7 @@ class EnhancedEngine:
         # Add slight randomization to confidence for realistic feel (only ±1%)
         confidence = max(86, min(98, confidence + random.randint(-1, 1)))
 
-        # Tracking for logs
+        # Tracking for logs (Capped to 100 items for memory safety)
         self.signal_history.append({
             "time": datetime.datetime.now(),
             "market": market,
@@ -267,6 +267,8 @@ class EnhancedEngine:
             "confidence": confidence,
             "strategy": strategy
         })
+        if len(self.signal_history) > 100:
+            self.signal_history = self.signal_history[-100:]
         
         return direction, confidence, strategy
 
