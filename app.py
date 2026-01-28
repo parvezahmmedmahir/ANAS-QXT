@@ -195,24 +195,30 @@ pg_pool = None
 def init_db_pool():
     global pg_pool
     if DATABASE_URL:
+        # Optimization: If using Supabase Pooler (6543), try Direct Port (5432) instead for stability
+        db_url = DATABASE_URL
+        if ":6543" in db_url:
+            db_url = db_url.replace(":6543", ":5432")
+            print("[SERVER] 🔄 Optimized: Switching from Pooler (6543) to Direct Port (5432)")
+
         # Retry logic for Pool Initialization (Critical for Render Cold Start)
         for i in range(3): 
             try:
                 pg_pool = psycopg2.pool.ThreadedConnectionPool(
-                    1, 10, # Threaded Pool: Support up to 10 concurrent threads
-                    DATABASE_URL,
-                    connect_timeout=10,
+                    1, 20, # Increased to 20 concurrent threads for peak loads
+                    db_url,
+                    connect_timeout=15, # Increased timeout to 15s
                     sslmode='require',
                     keepalives=1,
                     keepalives_idle=30,
                     keepalives_interval=10,
                     keepalives_count=5
                 )
-                print(f"[SERVER] ✅ High-Concurrency Threaded Pool Initialized (Attempt {i+1})")
+                print(f"[SERVER] ✅ DB Connection Pool Active (Attempt {i+1})")
                 break
             except Exception as e:
                 print(f"[SERVER] ⚠️ Pool Init Warning (Attempt {i+1}): {e}")
-                if i < 2: time.sleep(2)
+                if i < 2: time.sleep(3)
 
 # Initialize pool on startup
 init_db_pool()
@@ -252,8 +258,9 @@ def get_db_connection():
         
         # Fallback: Direct connection (Emergency)
         if DATABASE_URL:
-            # REDUCED TIMEOUT: 7s + SSL
-            conn = psycopg2.connect(DATABASE_URL, connect_timeout=7, sslmode='require')
+            # Try switching port if we are hitting timeouts
+            db_url = DATABASE_URL.replace(":6543", ":5432") if ":6543" in DATABASE_URL else DATABASE_URL
+            conn = psycopg2.connect(db_url, connect_timeout=10, sslmode='require')
             return conn, 'postgres'
         else:
             conn = sqlite3.connect(DB_FILE, check_same_thread=False)
