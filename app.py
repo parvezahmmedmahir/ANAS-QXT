@@ -284,8 +284,10 @@ def get_db_connection():
 
         # 4. Final Fallback: Local SQLite (Guaranteed to work)
         print("[DB] FALLBACK: Using Local SQLite for service continuity")
-        # Ensure directory exists
-        os.makedirs(os.path.dirname(DB_FILE), exist_ok=True)
+        # Ensure directory exists if subdirectories are specified
+        db_dir = os.path.dirname(DB_FILE)
+        if db_dir:
+            os.makedirs(db_dir, exist_ok=True)
         db_conn = sqlite3.connect(DB_FILE, check_same_thread=False)
         db_conn.row_factory = sqlite3.Row
         return db_conn, 'sqlite'
