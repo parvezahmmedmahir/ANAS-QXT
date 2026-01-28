@@ -92,6 +92,9 @@ class QuotexMrBeastAdapter:
                             "close": float(c.get("close", 0)),
                             "volume": float(c.get("volume", 0)) if "volume" in c else 0
                         })
+                    if len(formatted_candles) > 1:
+                        if formatted_candles[0]['time'] > formatted_candles[-1]['time']:
+                            formatted_candles.reverse()
                     return formatted_candles
             
             print(f"[QUOTEX-API] ⚠️ No data for {asset} (Status: {response.status_code})")

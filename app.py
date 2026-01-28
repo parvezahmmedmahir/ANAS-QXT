@@ -668,7 +668,7 @@ class LiveMarketData:
                 "close": float(v["4. close"]),
                 "ts": ts
             })
-        return candles if candles else None
+        return candles[::-1] if candles else None
 
     def _fetch_crypto_intraday(self, symbol, market="USD"):
         url = "https://www.alphavantage.co/query"
@@ -692,7 +692,7 @@ class LiveMarketData:
                 "close": float(v["4. close"]),
                 "ts": ts
             })
-        return candles
+        return candles[::-1] if candles else None
 
 
     def _fetch_fx_spot(self, from_sym, to_sym):
@@ -789,10 +789,11 @@ class MarketDataFeed:
                     if not cfg: return None
                     
                     try:
-                        if broker == "QUOTEX" and QuotexAdapter:
-                            print(f"[FEED] Lazy loading Quotex...")
-                            self.adapters["QUOTEX"] = QuotexAdapter(cfg)
-                            threading.Thread(target=self.adapters["QUOTEX"].connect, daemon=True).start()
+                        if broker == "QUOTEX" and QuotexWSAdapter:
+                            print(f"[FEED] Lazy loading Quotex Bridge...")
+                            self.adapters["QUOTEX"] = QuotexWSAdapter(cfg)
+                            if hasattr(self.adapters["QUOTEX"], "connect"):
+                                threading.Thread(target=self.adapters["QUOTEX"].connect, daemon=True).start()
                         elif broker == "IQOPTION" and IQOptionAdapter:
                             print(f"[FEED] Lazy loading IQ Option...")
                             self.adapters["IQOPTION"] = IQOptionAdapter(cfg)
@@ -861,14 +862,11 @@ class MarketDataFeed:
 
         tf_seconds = timeframe_minutes * 60
         # Preferred active broker then others defined in config
+        # 1. Preferred active broker then others defined in config
         ordered = [self.active_broker] if self.active_broker else []
         # Add other brokers from config that haven't been loaded yet
         cfg_brokers = [b for b in BROKER_CONFIG.keys() if b not in ordered]
         ordered += cfg_brokers
-
-        if "OTC" in asset or self.active_broker == "QUOTEX":
-            # Quotex adapter is now updated to use the high-performance mrbeaxt.site API
-            pass
 
         for name in ordered:
             adapter = self.get_adapter(name)
@@ -904,7 +902,7 @@ class MarketDataFeed:
                 "ts": time.time() - (i * tf_seconds)
             })
             last_price = last_price + noise
-        return candles
+        return candles[::-1] # Ensure Oldest -> Newest for technical analysis
 
     def generate_stochastic_candles(self, asset, timeframe_minutes):
         """Generates a high-fidelity, synchronized candle stream with stochastic noise."""
