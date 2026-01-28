@@ -170,7 +170,7 @@ print("[SYSTEM] Loading Reversal Engine & Drain Algorithms...")
 # --- DATABASE SETUP (Dual-Mode: Cloud/Local) ---
 DB_FILE = "security.db"
 DATABASE_URL = os.getenv("DATABASE_URL")
-PORT = os.getenv("PORT", "6543")
+DB_PORT = "6543" # Force database port display to avoid confusion with Render's WEB PORT
 
 def is_market_open():
     """Checks if the real Forex market is open based on UTC time"""
@@ -197,31 +197,47 @@ def init_db_pool():
     global pg_pool
     if DATABASE_URL:
         db_url = DATABASE_URL
-        print(f"[SERVER] 🔌 Connecting to Database Port: {PORT}")
+        print(f"[SERVER] 🔌 Connecting to Database Port: {DB_PORT} (Pooler)")
 
         # Retry logic for Pool Initialization
-        for i in range(2): # Reduced to 2 attempts for faster boot
+        for i in range(2): 
             try:
                 pg_pool = psycopg2.pool.ThreadedConnectionPool(
-                    1, 10,  # Reduced from 25 to 10 for memory safety
+                    1, 10,
                     db_url,
-                    connect_timeout=10, # Reduced from 20 to 10
+                    connect_timeout=10, 
                     sslmode='require',
                     keepalives=1,
                     keepalives_idle=30
                 )
-                print(f"[SERVER] ✅ Database Connection Active (Port: {PORT})")
+                print(f"[SERVER] ✅ Database Connection Active")
                 break
             except Exception as e:
-                print(f"[SERVER] ⚠️ Pool Init Warning (Attempt {i+1}): {e}")
-                if i < 1: time.sleep(2)
+                print(f"[SERVER] ⚠️ Pooler Init Warning (6543): {e}")
+                # SILENT AUTO-SWITCH: If 6543 fails, try 5432 (Direct) immediately
+                if "timeout expired" in str(e).lower() or i == 1:
+                    try:
+                        print(f"[SERVER] 🔄 Switching to Direct Connection (5432) for stability...")
+                        direct_url = db_url.replace(":6543", ":5432").replace("pooler.supabase.com", "cxflxjgtlwzxoltfphwt.supabase.co")
+                        pg_pool = psycopg2.pool.ThreadedConnectionPool(1, 10, direct_url, connect_timeout=10, sslmode='require')
+                        print(f"[SERVER] ✅ Direct Handshake Successful (Port: 5432)")
+                        break
+                    except Exception as e2:
+                        print(f"[SERVER] ❌ Direct Connection also failed: {e2}")
+                
+                if i < 1: time.sleep(1)
 
-# Initialize pool on startup
-init_db_pool()
+# Deferred pool initialization to prevent boot timeouts
+# init_db_pool() is now called by get_db_connection() on demand
 
 def get_db_connection():
     """Fetches a connection from the high-speed pool and verifies it's alive"""
+    global pg_pool
     try:
+        # Deferred Initialization: Ensures App boots instantly on Render
+        if DATABASE_URL and pg_pool is None:
+            init_db_pool()
+            
         if pg_pool:
             # Try to get a valid connection from the pool (max 2 attempts)
             for _ in range(2):
@@ -254,11 +270,19 @@ def get_db_connection():
         
         # Fallback: Direct connection (Emergency)
         if DATABASE_URL:
+            db_url = DATABASE_URL
             try:
-                conn = psycopg2.connect(DATABASE_URL, connect_timeout=10, sslmode='require')
-                return conn, 'postgres'
+                # Try Port 6543 first, then 5432
+                try:
+                    conn = psycopg2.connect(db_url, connect_timeout=5, sslmode='require')
+                    return conn, 'postgres'
+                except:
+                    print("[DB] Fallback 6543 failed, trying Direct 5432...")
+                    direct_url = db_url.replace(":6543", ":5432").replace("pooler.supabase.com", "cxflxjgtlwzxoltfphwt.supabase.co")
+                    conn = psycopg2.connect(direct_url, connect_timeout=5, sslmode='require')
+                    return conn, 'postgres'
             except Exception as e:
-                print(f"[DB] Fallback connection failed: {e}")
+                print(f"[DB] All fallback connections failed: {e}")
         else:
             conn = sqlite3.connect(DB_FILE, check_same_thread=False)
             conn.row_factory = sqlite3.Row
