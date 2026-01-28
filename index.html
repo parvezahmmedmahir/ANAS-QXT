@@ -1818,13 +1818,21 @@
             localStorage.removeItem('QUANTUM_DEVICE_ID');
 
             if (isAuto) {
-              gate.classList.remove('hidden'); // Show login screen
-              document.getElementById('loading-screen').style.display = 'none'; // Hide loader
+              gate.classList.remove('hidden');
+              document.getElementById('loading-screen').style.display = 'none';
             } else {
               unlockBtn.innerHTML = '<i class="fa-solid fa-xmark"></i> ACCESS DENIED';
               unlockBtn.style.background = '#ef4444';
               errMsg.innerText = data.message || "Invalid Key";
               setTimeout(() => { unlockBtn.innerHTML = '<i class="fa-solid fa-lock"></i> RETRY'; }, 3000);
+            }
+          } else {
+            // Fallback for network errors or unexpected responses
+            if (isAuto) {
+              gate.classList.remove('hidden');
+              document.getElementById('loading-screen').style.display = 'none';
+            } else {
+              errMsg.innerText = "Quantum Node rejected handshake. Retrying...";
             }
           }
         } catch (err) {
@@ -1846,7 +1854,7 @@
     </script>
 
     <!-- App Wrapper: CENTERED -->
-    <div id="app-container" class="app-wrap hidden">
+    <div id="app-container" class="app-wrapper hidden">
 
       <!-- Config Form -->
       <div id="form-section" class="card">

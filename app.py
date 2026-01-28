@@ -240,11 +240,7 @@ def get_db_connection():
         if DATABASE_URL and pg_pool is None:
             init_db_pool()
             # Verify tables once after pooler is ready
-            try:
-                print("[SYSTEM] 📦 Lazy-initializing Database Schema...")
-                init_db()
-            except Exception as e:
-                print(f"[SYSTEM] ⚠️ Late Init Error: {e}")
+            ensure_tables_ready()
             
         if pg_pool:
             # Try to get a valid connection from the pool (max 2 attempts)
@@ -604,11 +600,11 @@ class MarketDataFeed:
         self.quotex_ws = QuotexWSAdapter()
         self.forex_ws = ForexWSAdapter()
         
-        # Initialize Brokers based on Config
-        if QuotexAdapter and BROKER_CONFIG.get("QUOTEX"):
-            print("[FEED] Initializing Quotex Adapter...")
-            self.adapters["QUOTEX"] = QuotexAdapter(BROKER_CONFIG["QUOTEX"])
-            
+        # Initialize Adapters (Lazy/Lightweight)
+        if QuotexWSAdapter:
+            print("[FEED] Initializing Quotex Fast-Stream Adapter...")
+            self.adapters["QUOTEX"] = QuotexWSAdapter(BROKER_CONFIG.get("QUOTEX", {}))
+        
         if IQOptionAdapter and BROKER_CONFIG.get("IQOPTION"):
             print("[FEED] Initializing IQ Option Adapter...")
             self.adapters["IQOPTION"] = IQOptionAdapter(BROKER_CONFIG["IQOPTION"])
@@ -754,20 +750,45 @@ class MarketDataFeed:
             
         return candles[::-1]
 
-data_feed = MarketDataFeed()
 reversal_engine = ReversalEngine() if ReversalEngine else None
+_data_feed = None
+_engine = None
+_enhanced_engine = None
+_init_done = False
 
-# Initialize Enhanced Engine if available
-if ENHANCED_ENGINE_AVAILABLE:
-    enhanced_engine = EnhancedEngine()
-    print("[ENGINE] ✅ Pro Engine v3.0 Loaded (Wick Rejection + Stochastic Sync)")
-else:
-    enhanced_engine = None
-    print("[ENGINE] ⚠️  Fallback Engine Active")
+def get_system_feed():
+    global _data_feed
+    if _data_feed is None:
+        print("[SYSTEM] ⚡ Initializing Global Data Feed (Lazy)...")
+        _data_feed = MarketDataFeed()
+    return _data_feed
+
+def get_system_engine():
+    global _engine
+    if _engine is None:
+        _engine = InstitutionalSignalEngine()
+    return _engine
+
+def get_enhanced_engine():
+    global _enhanced_engine
+    if _enhanced_engine is None and ENHANCED_ENGINE_AVAILABLE:
+        print("[SYSTEM] ⚡ Initializing Pro Engine v3.0 (Lazy)...")
+        _enhanced_engine = EnhancedEngine()
+    return _enhanced_engine
+
+def ensure_tables_ready():
+    global _init_done
+    if not _init_done:
+        try:
+            init_db()
+            _init_done = True
+        except Exception as e:
+            print(f"[DB] Ready Check Error: {e}")
 
 # --- ADVANCED SIGNAL STRATEGIES ---
 class InstitutionalSignalEngine:
     def __init__(self):
+        # reversal_engine is initialized at module level (fast)
         self.reversal_engine = reversal_engine
 
     def calculate_rsi(self, prices, period=14):
@@ -1343,12 +1364,16 @@ def predict():
             }), 403
         # ----------------------------
         
-        candles = data_feed.get_candles(market, timeframe)
+        feed = get_system_feed()
+        enhanced_e = get_enhanced_engine()
+        standard_e = get_system_engine()
+        
+        candles = feed.get_candles(market, timeframe)
         
         # --- WS & DATA VALIDATION (High-Precision Rule) ---
         # Check WS health
-        quotex_ws_active = data_feed.quotex_ws.connected or (broker == "QUOTEX" and data_feed.adapters.get("QUOTEX") and data_feed.adapters["QUOTEX"].connected)
-        forex_ws_active = data_feed.forex_ws.connected
+        quotex_ws_active = feed.quotex_ws.connected or (broker == "QUOTEX" and feed.adapters.get("QUOTEX") and feed.adapters["QUOTEX"].connected)
+        forex_ws_active = feed.forex_ws.connected
         
         if not candles:
             print(f"[PREDICT] Aborting: No real-time data for {market}")
@@ -1376,13 +1401,13 @@ def predict():
             utc_now = datetime.datetime.utcnow()
             entry_time_calculated = (utc_now + datetime.timedelta(minutes=1)).strftime("%H:%M")
 
-        if enhanced_engine:
-            direction, conf, strategy = enhanced_engine.analyze(broker, market, timeframe, candles=candles, entry_time=entry_time_calculated)
+        if enhanced_e:
+            direction, conf, strategy = enhanced_e.analyze(broker, market, timeframe, candles=candles, entry_time=entry_time_calculated)
             
             # Get win rate estimate
-            win_rate = enhanced_engine.get_win_rate(market)
+            win_rate = enhanced_e.get_win_rate(market)
         else:
-            direction, conf = engine.analyze(broker, market, timeframe, candles=candles, entry_time=entry_time_calculated)
+            direction, conf = standard_e.analyze(broker, market, timeframe, candles=candles, entry_time=entry_time_calculated)
             strategy = "STANDARD_ANALYSIS"
             win_rate = 0
         
@@ -1441,18 +1466,21 @@ def home():
 
 @app.route('/test')
 def test():
+    feed = get_system_feed()
+    enhanced_e = get_enhanced_engine()
+    
     # Return connectivity status of brokers
     broker_status = {name: (adapter.connected if hasattr(adapter, 'connected') else "Unknown") 
-                     for name, adapter in data_feed.adapters.items()} if data_feed else {}
+                     for name, adapter in feed.adapters.items()} if feed else {}
     conn_res = get_db_connection()
     db_type = conn_res[1] if conn_res else "None"
     return jsonify({
         "status": "ONLINE", 
         "version": "4.0-ENT-ENHANCED",
-        "engine": "Enhanced v2.0" if enhanced_engine else "Standard",
+        "engine": "Enhanced v2.0" if enhanced_e else "Standard",
         "db_mode": db_type,
         "brokers": broker_status,
-        "active_broker": data_feed.active_broker if data_feed else None
+        "active_broker": feed.active_broker if feed else None
     })
 
 @app.route('/api/win_rate', methods=['GET'])
