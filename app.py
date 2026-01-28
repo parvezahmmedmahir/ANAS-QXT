@@ -170,6 +170,7 @@ print("[SYSTEM] Loading Reversal Engine & Drain Algorithms...")
 # --- DATABASE SETUP (Dual-Mode: Cloud/Local) ---
 DB_FILE = "security.db"
 DATABASE_URL = os.getenv("DATABASE_URL")
+PORT = os.getenv("PORT", "6543")
 
 def is_market_open():
     """Checks if the real Forex market is open based on UTC time"""
