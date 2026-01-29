@@ -489,7 +489,9 @@ def init_db():
                 ]
                 for col_name, sql in migrations:
                     if col_name not in cols:
-                        try: cur.execute(sql)
+                        try: 
+                            cur.execute(sql)
+                            conn.commit() # Immediate commit for schema stability
                         except: pass
             except: pass
 
