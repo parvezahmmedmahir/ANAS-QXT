@@ -252,26 +252,39 @@ def is_market_open():
 # Persistent connections for high-speed performance on Render
 pg_pool = None
 
-def init_db_pool():
+def init_db_pool(custom_url=None):
     global pg_pool
-    if DATABASE_URL:
-        # Use very short timeout to avoid blocking requests
-        print(f"[SERVER] Connecting to Database Pooler (Port: 6543)...")
-        try:
-            pg_pool = psycopg2.pool.ThreadedConnectionPool(
-                1, 10,
-                DATABASE_URL,
-                connect_timeout=3, 
-                sslmode='require',
-                keepalives=1,
-                keepalives_idle=60,
-                keepalives_interval=10,
-                keepalives_count=5
-            )
-            print(f"[SERVER] Database Pool Created successfully.")
-        except Exception as e:
-            print(f"[SERVER] Pooler failed: {e}")
+    target_url = custom_url or DATABASE_URL
+    if not target_url: return
+    
+    # Render Free Tier/Supabase Stabilization
+    is_pooler = ":6543" in target_url
+    port_label = "6543 (Pooler)" if is_pooler else "5432 (Direct)"
+    
+    print(f"[DB-INIT] Establishing Institutional Link via {port_label}...")
+    try:
+        pg_pool = psycopg2.pool.ThreadedConnectionPool(
+            1, 20, # Dynamic scaling
+            target_url,
+            connect_timeout=10, 
+            sslmode='require',
+            application_name='QuantumX-Enterprise'
+        )
+        # Test connection before declaring success
+        conn = pg_pool.getconn()
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1")
+        pg_pool.putconn(conn)
+        print(f"[DB-SUCCESS] Link established on {port_label}.")
+    except Exception as e:
+        print(f"[DB-RETRY] {port_label} refused connection: {e}")
+        if is_pooler and not custom_url:
+            direct_url = target_url.replace(":6543", ":5432")
+            print("[DB-FALLBACK] Deploying Direct-to-Compute fallback (Port 5432)...")
+            init_db_pool(direct_url)
+        else:
             pg_pool = None
+            print("[DB-CRITICAL] All cloud database links failed. System operating on Local Fallback Mode.")
 
 # Deferred pool initialization to prevent boot timeouts
 # init_db_pool() is now called by get_db_connection() on demand
@@ -461,15 +474,24 @@ def init_db():
                     timezone_geo TEXT
                 )
             """)
-            # 2. Tracks Columns for licenses
-            cur.execute("PRAGMA table_info(licenses)")
-            cols = [c[1] for c in cur.fetchall()]
-            if 'last_access_date' not in cols: cur.execute("ALTER TABLE licenses ADD COLUMN last_access_date TIMESTAMP")
-            if 'activation_date' not in cols: cur.execute("ALTER TABLE licenses ADD COLUMN activation_date TIMESTAMP")
-            if 'usage_count' not in cols: cur.execute("ALTER TABLE licenses ADD COLUMN usage_count INTEGER DEFAULT 0")
-            if 'country' not in cols: cur.execute("ALTER TABLE licenses ADD COLUMN country TEXT")
-            if 'city' not in cols: cur.execute("ALTER TABLE licenses ADD COLUMN city TEXT")
-            if 'timezone_geo' not in cols: cur.execute("ALTER TABLE licenses ADD COLUMN timezone_geo TEXT")
+            # 2. Tracks Columns for licenses (FORCE REPAIR)
+            try:
+                cur.execute("PRAGMA table_info(licenses)")
+                cols = [c[1] for c in cur.fetchall()]
+                migrations = [
+                    ('last_access_date', 'ALTER TABLE licenses ADD COLUMN last_access_date TIMESTAMP'),
+                    ('activation_date', 'ALTER TABLE licenses ADD COLUMN activation_date TIMESTAMP'),
+                    ('usage_count', 'ALTER TABLE licenses ADD COLUMN usage_count INTEGER DEFAULT 0'),
+                    ('country', 'ALTER TABLE licenses ADD COLUMN country TEXT'),
+                    ('city', 'ALTER TABLE licenses ADD COLUMN city TEXT'),
+                    ('timezone_geo', 'ALTER TABLE licenses ADD COLUMN timezone_geo TEXT'),
+                    ('expiry_date', 'ALTER TABLE licenses ADD COLUMN expiry_date TIMESTAMP')
+                ]
+                for col_name, sql in migrations:
+                    if col_name not in cols:
+                        try: cur.execute(sql)
+                        except: pass
+            except: pass
 
             # 3. User Sessions
             cur.execute("""
@@ -1255,8 +1277,11 @@ def validate_license():
         
         return jsonify({
             "valid": True,
+            "key": original_key,
             "category": category,
-            "message": "Identity Verified. Connected to Enterprise Grid."
+            "hwid": generate_quantum_hwid(device_id),
+            "expiry": str(expiry_date) if expiry_date else "Lifetime",
+            "message": "Authorization successful. Grounding security handshake..."
         })
     except Exception as e:
         print(f"[AUTH] Error during validation: {e}")
@@ -1386,12 +1411,29 @@ def check_device_sync():
         conn.commit()
         
         print(f"[AUTH-SYNC] ✅ Auto-Login Verified: {key} | Device: {device_id[:20]}... | IP: {ip_addr}")
+        if status == 'ACTIVE' and db_type == 'postgres':
+            try:
+                # Institutional Sync: Mirror key to local SQLite so it survives outages
+                local_conn = sqlite3.connect(DB_FILE, timeout=5)
+                local_cur = local_conn.cursor()
+                local_cur.execute("""
+                    INSERT OR REPLACE INTO licenses 
+                    (key_code, category, status, device_id, expiry_date, activation_date)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """, (key, category, status, reg_device or device_id, str(expiry_date) if expiry_date else None, datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+                local_conn.commit()
+                local_cur.close()
+                local_conn.close()
+            except Exception as ex:
+                print(f"[AUTH-SYNC] Mirror to SQLite failed: {ex}")
+
         return jsonify({
             "valid": True,
             "key": key,
             "category": category,
             "hwid": generate_quantum_hwid(device_id),
-            "message": "System Recognized. Security Layers Synchronized Automatically."
+            "expiry": str(expiry_date) if expiry_date else "Lifetime",
+            "message": "Access Granted. Quantum Security Layers Synchronized." if status == 'ACTIVE' else "License Activated and Bound to Device."
         })
     except Exception as e:
         print(f"[AUTH] Device Sync Error: {e}")
